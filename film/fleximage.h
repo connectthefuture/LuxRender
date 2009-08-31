@@ -105,7 +105,7 @@ public:
 	virtual void SetStringParameterValue(luxComponentParameters param, const string& value, int index);
 	virtual string GetStringParameterValue(luxComponentParameters param, int index);
 
-	virtual void WriteFilm(const string &filename) { WriteResumeFilm(filename); }
+	virtual void WriteFilm(const string &fname) { WriteResumeFilm(fname); }
 	// Dade - method useful for transmitting the samples to a client
 	virtual void TransmitFilm(std::basic_ostream<char> &stream,bool clearBuffers = true,bool transmitParams=false);
 	virtual float UpdateFilm(std::basic_istream<char> &stream);
@@ -120,12 +120,11 @@ public:
 private:
 	static void GetColorspaceParam(const ParamSet &params, const string name, float values[2]);
 
-	void WriteImage2(ImageType type, vector<Color> &color, vector<float> &alpha, string postfix);
-	void WriteTGAImage(vector<Color> &rgb, vector<float> &alpha, const string &filename);
-	void WritePNGImage(vector<Color> &rgb, vector<float> &alpha, const string &filename);
-	void WriteEXRImage(vector<Color> &rgb, vector<float> &alpha, const string &filename, vector<float> &zbuf);
+	void WriteImage2(ImageType type, vector<XYZColor> &color, vector<float> &alpha, string postfix);
+	void WriteTGAImage(vector<RGBColor> &rgb, vector<float> &alpha, const string &filename);
+	void WritePNGImage(vector<RGBColor> &rgb, vector<float> &alpha, const string &filename);
+	void WriteEXRImage(vector<RGBColor> &rgb, vector<float> &alpha, const string &filename, vector<float> &zbuf);
 	void WriteResumeFilm(const string &filename);
-	void ScaleOutput(vector<Color> &color, vector<float> &alpha, float *scale);
 
 	// FlexImageFilm Private Data
 	Filter *filter;
@@ -193,7 +192,7 @@ private:
 	GREYCStorationParams m_GREYCStorationParams, d_GREYCStorationParams;
 	ChiuParams m_chiuParams, d_chiuParams;
 
-	Color * m_bloomImage; // Persisting bloom layer image 
+	XYZColor * m_bloomImage; // Persisting bloom layer image 
 	bool m_BloomUpdateLayer;
 	bool m_BloomDeleteLayer;
 	bool m_HaveBloomImage;
@@ -206,7 +205,7 @@ private:
 	bool m_AberrationEnabled, d_AberrationEnabled;
 	float m_AberrationAmount, d_AberrationAmount;
 
-	Color * m_glareImage; // Persisting glarelayer image 
+	XYZColor * m_glareImage; // Persisting glarelayer image 
 	bool m_GlareUpdateLayer;
 	bool m_GlareDeleteLayer;
 	bool m_HaveGlareImage;
