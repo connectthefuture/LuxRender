@@ -1,0 +1,16 @@
+^CMakeFiles
+^CMakeCache
+^Makefile
+^cmake_install.cmake
+^config.h
+^liblux.a
+^luxconsole
+^luxrender
+^luxlex
+^luxparse
+^luxmerger
+^luxcomp
+syntax: glob
+*.directory
+moc_*.cxx
+*~
