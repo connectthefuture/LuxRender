@@ -35,6 +35,7 @@
 #include "stats.h"
 #include "renderfarm.h"
 #include "fleximage.h"
+#include "epsilon.h"
 
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filtering_streambuf.hpp>
@@ -87,6 +88,8 @@ void Context::init() {
 	pushedTransforms.clear();
 	renderFarm = new RenderFarm();
 	filmOverrideParams = NULL;
+	epsilonMin = MachineEpsilon::DEFAULT_EPSILON_MIN;
+	epsilonMax = MachineEpsilon::DEFAULT_EPSILON_MAX;
 }
 
 void Context::free() {
@@ -227,6 +230,13 @@ void Context::coordSysTransform(const string &n) {
 	renderFarm->send("luxCoordSysTransform", n);
 	if (namedCoordinateSystems.find(n) != namedCoordinateSystems.end())
 		curTransform = namedCoordinateSystems[n];
+}
+void Context::setEpsilon(const float minValue, const float maxValue)
+{
+	VERIFY_INITIALIZED("SetEpsilon");
+	renderFarm->send("luxSetEpsilon", minValue, maxValue);
+	epsilonMin = minValue;
+	epsilonMax = maxValue;
 }
 void Context::enableDebugMode() {
     VERIFY_OPTIONS("EnableDebugMode");
@@ -508,11 +518,13 @@ void Context::portalShape(const string &n, const ParamSet &params) {
 	//	curTransform, graphicsState->areaLightParams, shape);
 
 	if (graphicsState->currentLight != "") {
+		MachineEpsilon me(epsilonMin, epsilonMax);
+
 		if (graphicsState->currentLightPtr0)
-			graphicsState->currentLightPtr0->AddPortalShape(sh);
+			graphicsState->currentLightPtr0->AddPortalShape(&me, sh);
 
 		if (graphicsState->currentLightPtr1)
-			graphicsState->currentLightPtr1->AddPortalShape(sh);
+			graphicsState->currentLightPtr1->AddPortalShape(&me, sh);
 	}
 }
 
@@ -600,10 +612,12 @@ void Context::shape(const string &n, const ParamSet &params) {
 	// Initialize area light for shape
 	AreaLight *area= NULL;
 	if (graphicsState->areaLight != "") {
+		MachineEpsilon me(epsilonMin, epsilonMax);
+
 		TextureParams amp(params, graphicsState->areaLightParams,
 			graphicsState->floatTextures, graphicsState->colorTextures);
 		u_int lg = GetActiveLightGroup();
-		area = MakeAreaLight(graphicsState->areaLight, curTransform,
+		area = MakeAreaLight(&me, graphicsState->areaLight, curTransform,
 				graphicsState->areaLightParams, amp, sh);
 		if (area)
 			area->group = lg;
@@ -681,17 +695,21 @@ void Context::objectInstance(const string &n) {
 	if (in.size() == 0)
 		return;
 	if( in.size() == 1 && !in[0]->CanIntersect() ) {
+		MachineEpsilon me(epsilonMin, epsilonMax);
+
 		boost::shared_ptr<Primitive> prim = in[0];
 		in.clear();
-		prim->Refine(in, PrimitiveRefinementHints(false), prim);
+		prim->Refine(&me, in, PrimitiveRefinementHints(false), prim);
 	}
 	if (in.size() > 1 || !in[0]->CanIntersect()) {
+		MachineEpsilon me(epsilonMin, epsilonMax);
+
 		// Refine instance _Primitive_s and create aggregate
-		boost::shared_ptr<Primitive> accel(MakeAccelerator(
+		boost::shared_ptr<Primitive> accel(MakeAccelerator(&me,
 				renderOptions->AcceleratorName, in,
 				renderOptions->AcceleratorParams));
 		if (!accel)
-			accel = boost::shared_ptr<Primitive>(MakeAccelerator("kdtree", in, ParamSet()));
+			accel = boost::shared_ptr<Primitive>(MakeAccelerator(&me, "kdtree", in, ParamSet()));
 		if (!accel)
 			luxError(LUX_BUG,LUX_SEVERE,"Unable to find \"kdtree\" accelerator");
 		in.clear();
@@ -725,17 +743,21 @@ void Context::motionInstance(const string &n, float startTime, float endTime, co
 	if (in.size() == 0)
 		return;
 	if( in.size() == 1 && !in[0]->CanIntersect() ) {
+		MachineEpsilon me(epsilonMin, epsilonMax);
+
 		boost::shared_ptr<Primitive> prim = in[0];
 		in.clear();
-		prim->Refine(in, PrimitiveRefinementHints(false), prim);
+		prim->Refine(&me, in, PrimitiveRefinementHints(false), prim);
 	}
 	if (in.size() > 1 || !in[0]->CanIntersect()) {
+		MachineEpsilon me(epsilonMin, epsilonMax);
+
 		// Refine instance _Primitive_s and create aggregate
-		boost::shared_ptr<Primitive> accel(MakeAccelerator(
+		boost::shared_ptr<Primitive> accel(MakeAccelerator(&me,
 						renderOptions->AcceleratorName, in,
 						renderOptions->AcceleratorParams));
 		if (!accel)
-			accel = boost::shared_ptr<Primitive>(MakeAccelerator("kdtree", in, ParamSet()));
+			accel = boost::shared_ptr<Primitive>(MakeAccelerator(&me, "kdtree", in, ParamSet()));
 		if (!accel)
 			luxError(LUX_BUG,LUX_SEVERE,"Unable to find \"kdtree\" accelerator");
 		in.clear();
@@ -785,7 +807,7 @@ void Context::worldEnd() {
 	}
 	if (!terminated) {
 		// Create scene and render
-		luxCurrentScene = renderOptions->MakeScene();
+		luxCurrentScene = renderOptions->MakeScene(epsilonMin, epsilonMax);
 		if (luxCurrentScene) {
 			// Dade - check if we have to start the network rendering updater thread
 			if (renderFarm->getServerCount() > 0)
@@ -817,7 +839,10 @@ void Context::worldEnd() {
 		namedCoordinateSystems.end());
 }
 
-Scene *Context::RenderOptions::MakeScene() const {
+Scene *Context::RenderOptions::MakeScene(const float epsilonMin,
+		const float epsilonMax) const {
+	MachineEpsilon *machineEpsilon = new MachineEpsilon(epsilonMin, epsilonMax);
+
 	// Create scene objects from API settings
 	Filter *filter = MakeFilter(FilterName, FilterParams);
 	Film *film = MakeFilm(FilmName, FilmParams, filter);
@@ -829,11 +854,11 @@ Scene *Context::RenderOptions::MakeScene() const {
 			SurfIntegratorName, SurfIntegratorParams);
 	VolumeIntegrator *volumeIntegrator = MakeVolumeIntegrator(
 			VolIntegratorName, VolIntegratorParams);
-	boost::shared_ptr<Primitive> accelerator = MakeAccelerator(AcceleratorName, primitives,
+	boost::shared_ptr<Primitive> accelerator = MakeAccelerator(machineEpsilon, AcceleratorName, primitives,
 			AcceleratorParams);
 	if (!accelerator) {
 		ParamSet ps;
-		accelerator = MakeAccelerator("kdtree", primitives, ps);
+		accelerator = MakeAccelerator(machineEpsilon, "kdtree", primitives, ps);
 	}
 	if (!accelerator)
 		luxError(LUX_BUG,LUX_SEVERE,"Unable to find \"kdtree\" accelerator");
@@ -851,9 +876,11 @@ Scene *Context::RenderOptions::MakeScene() const {
 		luxError(LUX_BUG,LUX_SEVERE,"Unable to create scene due to missing plug-ins");
 		return NULL;
 	}
+
 	Scene *ret = new Scene(camera,
 			surfaceIntegrator, volumeIntegrator,
-			sampler, accelerator, lights, lightGroups, volumeRegion);
+			sampler, accelerator, lights, lightGroups, volumeRegion,
+			machineEpsilon);
 	// Erase primitives, lights, volume regions and instances from _RenderOptions_
 	primitives.clear();
 	lights.clear();

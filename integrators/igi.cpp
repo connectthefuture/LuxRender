@@ -126,7 +126,7 @@ void IGIIntegrator::Preprocess(const TsPack *tspack, const Scene *scene)
 			alpha /= pdf * lightPdf;
 			Intersection isect;
 			u_int nIntersections = 0;
-			while (scene->Intersect(ray, &isect) &&
+			while (scene->Intersect(tspack, ray, &isect) &&
 				!alpha.Black()) {
 				++nIntersections;
 //				alpha *= scene->Transmittance(ray);
@@ -153,7 +153,7 @@ void IGIIntegrator::Preprocess(const TsPack *tspack, const Scene *scene)
 				if (tspack->rng->floatValue() > r)
 					break;
 				alpha *= anew / r;
-				ray = RayDifferential(isect.dg.p, wi);
+				ray = RayDifferential(isect.dg.p, wi, scene->machineEpsilon);
 			}
 		}
 	}
@@ -167,14 +167,14 @@ u_int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 	const Sample *sample) const
 {
 	RayDifferential r;
-	float rayWeight = tspack->camera->GenerateRay(*sample, &r);
+	float rayWeight = tspack->camera->GenerateRay(tspack, *sample, &r);
 	if (rayWeight > 0.f) {
 		// Generate ray differentials for camera ray
 		++(sample->imageX);
-		float wt1 = tspack->camera->GenerateRay(*sample, &r.rx);
+		float wt1 = tspack->camera->GenerateRay(tspack, *sample, &r.rx);
 		--(sample->imageX);
 		++(sample->imageY);
-		float wt2 = tspack->camera->GenerateRay(*sample, &r.ry);
+		float wt2 = tspack->camera->GenerateRay(tspack, *sample, &r.ry);
 		r.hasDifferentials = (wt1 > 0.f) && (wt2 > 0.f);
 		--(sample->imageY);
 	}
@@ -184,7 +184,7 @@ u_int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 	float alpha = 1.f;
 	for (u_int depth = 0; ; ++depth) {
 		Intersection isect;
-		if (!scene->Intersect(r, &isect)) {
+		if (!scene->Intersect(tspack, r, &isect)) {
 			// Handle ray with no intersection
 			if (depth == 0)
 				alpha = 0.f;
@@ -229,10 +229,11 @@ u_int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 			float G = AbsDot(wi, n) * AbsDot(wi, vl.n) / d2;
 			SWCSpectrum Llight = f * vl.GetSWCSpectrum(tspack) *
 				(G / virtualLights[lSet].size());
-			scene->Transmittance(tspack, Ray(p, vl.p - p),
+			scene->Transmittance(tspack, Ray(p, vl.p - p, scene->machineEpsilon),
 				sample, &Llight);
-			if (!scene->IntersectP(Ray(p, vl.p - p, RAY_EPSILON,
-				1.f - RAY_EPSILON)))
+			const float rayEpsilon = tspack->machineEpsilon->E(p);
+			if (!scene->IntersectP(tspack, Ray(p, vl.p - p, rayEpsilon,
+				1.f - rayEpsilon)))
 				L += pathThroughput * Llight;
 		}
 		// Trace rays for specular reflection and refraction
@@ -245,7 +246,7 @@ u_int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 		if (!bsdf->Sample_f(tspack, wo, &wi, .5f, .5f, tspack->rng->floatValue(), &f, &pdf, BxDFType(BSDF_SPECULAR | BSDF_REFLECTION | BSDF_TRANSMISSION)))
 			break;
 		// Compute ray differential _rd_ for specular reflection
-		r = RayDifferential(p, wi);
+		r = RayDifferential(p, wi, scene->machineEpsilon);
 		r.time = ray.time;
 		pathThroughput *= f * (AbsDot(wi, n) / pdf);
 	}

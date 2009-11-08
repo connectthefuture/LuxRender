@@ -26,19 +26,28 @@
 #include <iostream>
 #include "vector.h"
 #include "point.h"
+#include "epsilon.h"
 
 namespace lux
 {
-#define RAY_EPSILON 1e-5f
-#define SHADOW_RAY_EPSILON 1e-5f
 
 class  Ray {
 public:
 	// Ray Public Methods
-	Ray(): mint(RAY_EPSILON), maxt(INFINITY), time(0.f) {}
+	Ray(): mint(0.f), maxt(INFINITY), time(0.f) {}
+	Ray(const MachineEpsilon *me): maxt(INFINITY), time(0.f) {
+		mint = me->E();
+	}
+
+	Ray(const Point &origin, const Vector &direction, const MachineEpsilon *me)
+		: o(origin), d(direction), maxt(INFINITY), time(0.f) {
+		mint = me->E(origin);
+	}
+
 	Ray(const Point &origin, const Vector &direction,
-		float start = RAY_EPSILON, float end = INFINITY, float t = 0.f)
+		float start, float end = INFINITY, float t = 0.f)
 		: o(origin), d(direction), mint(start), maxt(end), time(t) { }
+
 	Point operator()(float t) const { return o + d * t; }
 	void GetDirectionSigns(int signs[3]) const {
 		signs[0] = d.x < 0.f;

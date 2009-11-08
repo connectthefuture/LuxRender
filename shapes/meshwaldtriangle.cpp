@@ -153,7 +153,7 @@ MeshWaldTriangle::MeshWaldTriangle(const Mesh *m, u_int n)
 	}
 }
 
-bool MeshWaldTriangle::Intersect(const Ray &ray, Intersection *isect) const
+bool MeshWaldTriangle::Intersect(const TsPack *tspack, const Ray &ray, Intersection *isect) const
 {
 	float o0, o1, o2, d0, d1, d2;
 	switch (intersectionType) {
@@ -193,10 +193,14 @@ bool MeshWaldTriangle::Intersect(const Ray &ray, Intersection *isect) const
 
 	const float t = nd - o0 - nu * o1 - nv * o2;
 	if (det > 0.f) {
-		if (t <= det * ray.mint || t >= det * ray.maxt - t * RAY_EPSILON)
+		// Old code: ray.mint and ray.maxt have already to factor the usage of EPSILON
+		//if (t <= det * ray.mint || t >= det * ray.maxt - t * RAY_EPSILON)
+		if (t <= det * ray.mint || t >= det * ray.maxt)
 			return false;
 	} else {
-		if (t >= det * ray.mint || t <= det * ray.maxt - t * RAY_EPSILON)
+		// Old code: ray.mint and ray.maxt have already to factor the usage of EPSILON
+		// if (t >= det * ray.mint || t <= det * ray.maxt - t * RAY_EPSILON)
+		if (t >= det * ray.mint || t <= det * ray.maxt)
 			return false;
 	}
 
@@ -235,7 +239,7 @@ bool MeshWaldTriangle::Intersect(const Ray &ray, Intersection *isect) const
 	return true;
 }
 
-bool MeshWaldTriangle::IntersectP(const Ray &ray) const
+bool MeshWaldTriangle::IntersectP(const TsPack *tspack, const Ray &ray) const
 {
 	float o0, o1, o2, d0, d1, d2;
 	switch (intersectionType) {
@@ -275,10 +279,14 @@ bool MeshWaldTriangle::IntersectP(const Ray &ray) const
 
 	const float t = nd - o0 - nu * o1 - nv * o2;
 	if (det > 0.f) {
-		if (t <= det * ray.mint || t >= det * ray.maxt - t * RAY_EPSILON)
+		// Old code: ray.mint and ray.maxt have already to factor the usage of EPSILON
+		//if (t <= det * ray.mint || t >= det * ray.maxt - t * RAY_EPSILON)
+		if (t <= det * ray.mint || t >= det * ray.maxt)
 			return false;
 	} else {
-		if (t >= det * ray.mint || t <= det * ray.maxt - t * RAY_EPSILON)
+		// Old code: ray.mint and ray.maxt have already to factor the usage of EPSILON
+		//if (t >= det * ray.mint || t <= det * ray.maxt - t * RAY_EPSILON)
+		if (t >= det * ray.mint || t <= det * ray.maxt)
 			return false;
 	}
 

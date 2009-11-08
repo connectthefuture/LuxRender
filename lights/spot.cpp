@@ -90,14 +90,14 @@ SWCSpectrum SpotLight::Sample_L(const TsPack *tspack, const Point &p, float u1, 
 		Vector *wi, float *pdf, VisibilityTester *visibility) const {
 	*pdf = 1.f;
 	*wi = Normalize(lightPos - p);
-	visibility->SetSegment(p, lightPos, tspack->time);
+	visibility->SetSegment(tspack, p, lightPos, tspack->time);
 	return Lbase->Evaluate(tspack, dummydg) * gain * Falloff(-*wi) /
 		DistanceSquared(lightPos, p);
 }
-float SpotLight::Pdf(const Point &, const Vector &) const {
+float SpotLight::Pdf(const TsPack *tspack, const Point &, const Vector &) const {
 	return 0.;
 }
-float SpotLight::Pdf(const Point &p, const Normal &n,
+float SpotLight::Pdf(const TsPack *tspack, const Point &p, const Normal &n,
 	const Point &po, const Normal &ns) const
 {
 	return AbsDot(Normalize(p - po), ns) / DistanceSquared(p, po);
@@ -136,7 +136,7 @@ bool SpotLight::Sample_L(const TsPack *tspack, const Scene *scene, const Point &
 	DifferentialGeometry dg(lightPos, ns, dpdu, dpdv, Normal(0, 0, 0), Normal(0, 0, 0), 0, 0, NULL);
 	*bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dg, ns,
 		ARENA_ALLOC(tspack->arena, SpotBxDF)(cosTotalWidth, cosFalloffStart));
-	visibility->SetSegment(p, lightPos, tspack->time);
+	visibility->SetSegment(tspack, p, lightPos, tspack->time);
 	*Le = Lbase->Evaluate(tspack, dummydg) * gain;
 	return true;
 }

@@ -51,7 +51,7 @@ EnvironmentCamera::
 	: Camera(world2camStart, world2camEnd, hither, yon, sopen, sclose, sdist, film) {
 		pos = CameraToWorld(Point(0, 0, 0));
 }
-float EnvironmentCamera::GenerateRay(const Sample &sample,
+float EnvironmentCamera::GenerateRay(const TsPack *tspack, const Sample &sample,
 		Ray *ray) const {
 	ray->o = CameraToWorld(Point(0,0,0));
 	// Generate environment camera ray direction
@@ -94,19 +94,21 @@ bool EnvironmentCamera::Sample_W(const TsPack *tspack, const Scene *scene, const
 		ARENA_ALLOC(tspack->arena, EnvironmentBxDF)());
 	*pdf = UniformSpherePdf();
 	*pdfDirect = 1.f;
-	visibility->SetSegment(p, pos, tspack->time);
+	visibility->SetSegment(tspack, p, pos, tspack->time);
 	*We = SWCSpectrum(*pdf);
 	return true;
 }
 
-BBox EnvironmentCamera::Bounds() const
+BBox EnvironmentCamera::Bounds(const MachineEpsilon *me) const
 {
 	BBox bound(pos);
-	bound.Expand(SHADOW_RAY_EPSILON);
+	bound.Expand(me->E(bound));
+
 	return bound;
 }
 
-bool EnvironmentCamera::GetSamplePosition(const Point &p, const Vector &wi, float distance, float *x, float *y) const
+bool EnvironmentCamera::GetSamplePosition(const MachineEpsilon *me,
+	const Point &p, const Vector &wi, float distance, float *x, float *y) const
 {
 	if (!isinf(distance) && (distance < ClipHither || distance > ClipYon))
 		return false;

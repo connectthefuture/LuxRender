@@ -17,38 +17,28 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
  *                                                                         *
  *   This project is based on PBRT ; see http://www.pbrt.org               *
- *   Lux Renderer website : http://www.luxrender.org                       *
+ *   Lux Renderer website : http://www.luxrender.net                       *
  ***************************************************************************/
 
-// bruteforce.cpp*
-#include "lux.h"
-#include "primitive.h"
+#include "epsilon.h"
 
-namespace lux
+using namespace lux;
+
+MachineEpsilon::MachineEpsilon(const float minValue, const float maxValue)
 {
+	minEpsilon = minValue;
+	DEBUG("minEpsilon", minEpsilon);
 
-// BruteForceAccel Declarations
-class  BruteForceAccel : public Aggregate {
-public:
-	// BruteForceAccel Public Methods
-	BruteForceAccel(const MachineEpsilon *me,
-			const vector<boost::shared_ptr<Primitive> > &p);
-	virtual ~BruteForceAccel();
-	virtual BBox WorldBound() const;
-	virtual bool CanIntersect() const { return true; }
-	virtual bool Intersect(const TsPack *tspack, const Ray &ray, Intersection *isect) const;
-	virtual bool IntersectP(const TsPack *tspack, const Ray &ray) const;
+	maxEpsilon = maxValue;
+	DEBUG("maxEpsilon", maxEpsilon);
 
-	virtual void GetPrimitives(vector<boost::shared_ptr<Primitive> > &prims);
+	UpdateAvarageEpsilon();
 
-	static Aggregate *CreateAccelerator(const MachineEpsilon *me,
-		const vector<boost::shared_ptr<Primitive> > &prims, const ParamSet &ps);
-
-private:
-	// BruteForceAccel Private Data
-	vector<boost::shared_ptr<Primitive> > prims;
-	BBox bounds;
-};
-
-}//namespace lux
-
+#if defined(MACHINE_EPSILON_DEBUG)
+	char buf[256];
+	for (float v = 1e-5f; v < 1e5f; v *= 2.0f) {
+		sprintf(buf,"Epsilon.Test: %f => %e", v, this->E(v));
+		luxError(LUX_NOERROR, LUX_DEBUG, buf);
+	}
+#endif
+}
