@@ -217,8 +217,8 @@ private:
 };
 
 void Mesh::Refine(vector<boost::shared_ptr<Primitive> > &refined,
-		const PrimitiveRefinementHints &refineHints,
-		boost::shared_ptr<Primitive> thisPtr)
+	const PrimitiveRefinementHints &refineHints,
+	boost::shared_ptr<Primitive> thisPtr)
 {
 	if (ntris + nquads == 0)
 		return;

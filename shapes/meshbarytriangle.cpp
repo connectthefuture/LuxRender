@@ -75,8 +75,6 @@ bool MeshBaryTriangle::Intersect(const Ray &ray, Intersection* isect) const
 		return false;
 	// Compute _t_ to intersection point
 	const float t = Dot(e2, s2) * invDivisor;
-	// Old code: ray.mint and ray.maxt have already to factor the usage of EPSILON
-	//if (t < ray.mint || t > ray.maxt - t * RAY_EPSILON)
 	if (t < ray.mint || t > ray.maxt)
 		return false;
 

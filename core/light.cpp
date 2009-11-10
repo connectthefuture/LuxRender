@@ -45,7 +45,11 @@ bool VisibilityTester::TestOcclusion(const TsPack *tspack, const Scene *scene, S
 	Vector d(Normalize(ray.d));
 	Intersection isect;
 	const BxDFType flags(BxDFType(BSDF_SPECULAR | BSDF_TRANSMISSION));
-	for (;;) {
+	// The for loop prevent an infinite sequence when the ray is almost
+	// parallel to the surface and is self shadowed
+	// This should be much less frequent with dynamic epsilon,
+	// but it's safer to keep it
+	for (u_int i = 0; i < 10000; ++i) {
 		if (!scene->Intersect(ray, &isect))
 			return true;
 		BSDF *bsdf = isect.GetBSDF(tspack, ray);

@@ -90,11 +90,7 @@ private:
 //#endif
 
 inline Ray Transform::operator()(const Ray &r) const {
-	Point o;
-	(*this)(r.o, &o);
-	Vector d;
-	(*this)(r.d, &d);
-	Ray ret(o, d, r.mint, r.maxt, r.time);
+	Ray ret((*this)(r.o), (*this)(r.d), r.mint, r.maxt, r.time);
 
 	return ret;
 }

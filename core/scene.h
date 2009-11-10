@@ -28,7 +28,6 @@
 #include "primitive.h"
 #include "sampling.h"
 #include "timer.h"
-#include "epsilon.h"
 
 #include "fastmutex.h"
 

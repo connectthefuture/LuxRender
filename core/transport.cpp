@@ -195,7 +195,12 @@ SWCSpectrum EstimateDirect(const TsPack *tspack, const Scene *scene, const Light
 					RayDifferential ray(p, wi);
 					ray.time = tspack->time;
 					const BxDFType flags(BxDFType(BSDF_SPECULAR | BSDF_TRANSMISSION));
-					for (;;) {
+					// The for loop prevents an infinite
+					// loop when the ray is almost parallel
+					// to the surface
+					// It should much less frequent with
+					// dynamic epsilon, but it's safer
+					for (u_int i = 0; i < 10000; ++i) {
 						if (!scene->Intersect(ray, &lightIsect)) {
 							Li *= light->Le(tspack, ray);
 							break;

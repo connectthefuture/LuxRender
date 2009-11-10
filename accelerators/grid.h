@@ -88,7 +88,7 @@ class  GridAccel : public Aggregate {
 public:
 	// GridAccel Public Methods
 	GridAccel(const vector<boost::shared_ptr<Primitive> > &p,
-			bool forRefined, bool refineImmediately);
+		bool forRefined, bool refineImmediately);
 	virtual BBox WorldBound() const;
 	virtual bool CanIntersect() const { return true; }
 	virtual ~GridAccel();

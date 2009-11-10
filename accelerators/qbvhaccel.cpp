@@ -173,11 +173,6 @@ public:
 		const __m128 t = _mm_div_ps(_mm_add_ps(_mm_mul_ps(edge2x, s2x),
 			_mm_add_ps(_mm_mul_ps(edge2y, s2y),
 			_mm_mul_ps(edge2z, s2z))), divisor);
-		/* Old code: ray4.mint and ray4.maxt have already to factor the usage of EPSILON
-		test = _mm_and_ps(test,
-			_mm_and_ps(_mm_cmpgt_ps(t, ray4.mint),
-			_mm_cmplt_ps(t, _mm_sub_ps(ray4.maxt,
-			_mm_mul_ps(t, _mm_set1_ps(RAY_EPSILON)))))); */
 		test = _mm_and_ps(test,
 			_mm_and_ps(_mm_cmpgt_ps(t, ray4.mint),
 			_mm_cmplt_ps(t, ray4.maxt)));
@@ -314,7 +309,8 @@ const boost::int16_t QBVHAccel::pathTable[] = {
 
 /***************************************************/
 QBVHAccel::QBVHAccel(const vector<boost::shared_ptr<Primitive> > &p,
-		u_int mp, u_int fst, u_int sf) : fullSweepThreshold(fst), skipFactor(sf), maxPrimsPerLeaf(mp)
+	u_int mp, u_int fst, u_int sf) : fullSweepThreshold(fst),
+	skipFactor(sf), maxPrimsPerLeaf(mp)
 {
 	// Refine all primitives
 	vector<boost::shared_ptr<Primitive> > vPrims;

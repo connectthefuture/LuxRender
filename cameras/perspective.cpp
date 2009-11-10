@@ -286,8 +286,8 @@ BBox PerspectiveCamera::Bounds() const
 	return bound;
 }
 
-bool PerspectiveCamera::GetSamplePosition(
-	const Point &p, const Vector &wi, float distance, float *x, float *y) const
+bool PerspectiveCamera::GetSamplePosition(const Point &p, const Vector &wi,
+	float distance, float *x, float *y) const
 {
 	Vector direction(normal);
 	const float cosi = Dot(wi, direction);

@@ -107,8 +107,8 @@ BBox EnvironmentCamera::Bounds() const
 	return bound;
 }
 
-bool EnvironmentCamera::GetSamplePosition(
-	const Point &p, const Vector &wi, float distance, float *x, float *y) const
+bool EnvironmentCamera::GetSamplePosition(const Point &p, const Vector &wi,
+	float distance, float *x, float *y) const
 {
 	if (!isinf(distance) && (distance < ClipHither || distance > ClipYon))
 		return false;

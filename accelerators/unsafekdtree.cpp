@@ -269,7 +269,7 @@ bool UnsafeKdTreeAccel::Intersect(const Ray &ray, Intersection *isect) const {
                 // Check one primitive inside leaf node
                 if (mp->lastMailboxId != rayId) {
                     mp->lastMailboxId = rayId;
-                    if (mp->primitive->Intersect( ray, isect))
+                    if (mp->primitive->Intersect(ray, isect))
                         hit = true;
                 }
             }
