@@ -431,6 +431,7 @@ SET(lux_core_src
 	core/context.cpp
 	core/contribution.cpp
 	core/dynload.cpp
+    core/epsilon.cpp
 	core/epsilon.cpp
 	core/exrio.cpp
 	core/film.cpp
@@ -453,12 +454,13 @@ SET(lux_core_src
 	core/primitive.cpp
 	${lux_core_reflection_src}
 	core/renderfarm.cpp
+    core/renderinghints.cpp
 	core/sampling.cpp
 	core/scene.cpp
 	core/shape.cpp
 	core/spd.cpp
 	core/spectrum.cpp
-        core/spectrumwavelengths.cpp
+    core/spectrumwavelengths.cpp
 	core/texture.cpp
 	core/tgaio.cpp
 	core/timer.cpp
