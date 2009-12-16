@@ -39,19 +39,13 @@ class ExPhotonIntegrator : public SurfaceIntegrator {
 public:
 	// ExPhotonIntegrator types
 	enum RenderingMode { RM_DIRECTLIGHTING, RM_PATH };
-	enum LightStrategy {
-		SAMPLE_ALL_UNIFORM, SAMPLE_ONE_UNIFORM,
-		SAMPLE_AUTOMATIC
-	};
 
 	// ExPhotonIntegrator Public Methods
 	ExPhotonIntegrator(
 			RenderingMode rm,
-			LightStrategy st,
 			u_int ndir, u_int ncaus, u_int nindir, u_int nrad,
 			u_int nLookup, u_int mdepth, u_int mpdepth,
 			float maxdist, bool finalGather, u_int gatherSamples, float ga,
-			PhotonMapRRStrategy rrstrategy, float rrcontprob,
 			float distThreshold,
 			string *mapsFileName,
 			bool dbgEnableDirect, bool dbgEnableDirectMap, bool dbgEnableCaustic,
@@ -73,7 +67,6 @@ private:
 
 	// ExPhotonIntegrator Private Data
 	RenderingMode renderingMode;
-	LightStrategy lightStrategy;
 	u_int nDirectPhotons, nCausticPhotons, nIndirectPhotons, nRadiancePhotons;
 	u_int nLookup;
 	u_int maxDepth, maxPhotonDepth;
@@ -82,7 +75,6 @@ private:
 	bool finalGather;
 	float cosGatherAngle;
 	u_int gatherSamples;
-	PhotonMapRRStrategy rrStrategy;
 	float rrContinueProbability;
 	float distanceThreshold;
 
