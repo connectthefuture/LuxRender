@@ -22,7 +22,7 @@
 
 // pngio.cpp*
 #include "pngio.h"
-#include "error.h"
+#include "color.h"
 #include "error.h"
 #include "osfunc.h"
 #include <png.h>
@@ -39,9 +39,9 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 
 
   void WritePngImage(int channeltype, bool ubit, bool savezbuf, const string &name, vector<RGBColor> &pixels,
-            vector<float> &alpha, int xPixelCount, int yPixelCount,
-        int xResolution, int yResolution,
-        int xPixelStart, int yPixelStart, ColorSystem &cSystem, float screenGamma) {
+            vector<float> &alpha, u_int xPixelCount, u_int yPixelCount,
+        u_int xResolution, u_int yResolution,
+        u_int xPixelStart, u_int yPixelStart, ColorSystem &cSystem, float screenGamma) {
 
     //
     // PNG writing starts here!
@@ -59,7 +59,7 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 		return;
 	}
 
-    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, (png_error_ptr) lux_png_error, NULL);
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, lux_png_error, NULL);
     png_infop info = png_create_info_struct(png);
     png_init_io(png, fp);
 
@@ -77,8 +77,8 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 
     png_text text;
     text.compression = PNG_TEXT_COMPRESSION_NONE;
-    text.key = (png_charp) "Software";
-    text.text = (png_charp) "LuxRender";
+    text.key = (png_charp)"Software";
+    text.text = (png_charp)"LuxRender";
     text.text_length = 4;
     png_set_text(png, info, &text, 1);
 
@@ -159,17 +159,15 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 		// 16 bit per channel
 		std::vector<png_uint_16> row(xPixelCount*4);
 
-		for (int y = 0; y < yPixelCount; ++y)
+		for (u_int y = 0; y < yPixelCount; ++y)
 		{
 			int i = 0;
 
 			switch (colorType) {
 				case PNG_COLOR_TYPE_GRAY:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
-//							const RGBColor &c = pixels[(x + y * xResolution)];
-//							png_uint_16 gray = static_cast<png_uint_16>(Clamp(65535.f * 
 							png_uint_16 gray = static_cast<png_uint_16>(Clamp(65535.f * 
 								pixels[x + y * xPixelCount].Y(), 0.f, 65535.f));
 
@@ -179,10 +177,8 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 					break;
 				case PNG_COLOR_TYPE_GRAY_ALPHA:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
-//							const RGBColor &c = pixels[(x + y * xResolution)];
-//							png_uint_16 gray = static_cast<png_uint_16>(Clamp(65535.f * 
 							png_uint_16 gray = static_cast<png_uint_16>(Clamp(65535.f * 
 								pixels[x + y * xPixelCount].Y(), 0.f, 65535.f));
 							png_uint_16 a = static_cast<png_uint_16>(Clamp(65535.f * alpha[x + y * xPixelCount], 0.f, 65535.f));
@@ -194,7 +190,7 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 					break;
 				case PNG_COLOR_TYPE_RGB:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
 							const RGBColor &c = pixels[(x + y * xPixelCount)];
 							png_uint_16 r = static_cast<png_uint_16>(Clamp(65535.f * c.c[0], 0.f, 65535.f));
@@ -209,7 +205,7 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 					break;
 				case PNG_COLOR_TYPE_RGB_ALPHA:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
 							const RGBColor &c = pixels[(x + y * xPixelCount)];
 							png_uint_16 r = static_cast<png_uint_16>(Clamp(65535.f * c.c[0], 0.f, 65535.f));
@@ -232,17 +228,15 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 		// 8 bit per channel
 		std::vector<png_byte> row(xPixelCount*4);
 
-		for (int y = 0; y < yPixelCount; ++y)
+		for (u_int y = 0; y < yPixelCount; ++y)
 		{
 			int i = 0;
 
 			switch (colorType) {
 				case PNG_COLOR_TYPE_GRAY:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
-//							const RGBColor &c = pixels[(x + y * xResolution)];
-//							png_byte gray = static_cast<png_byte>(Clamp(255.f * 
 							png_byte gray = static_cast<png_byte>(Clamp(255.f * 
 								pixels[x + y * xPixelCount].Y(), 0.f, 255.f));
 
@@ -252,10 +246,8 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 					break;
 				case PNG_COLOR_TYPE_GRAY_ALPHA:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
-//							const RGBColor &c = pixels[(x + y * xResolution)];
-//							png_byte gray = static_cast<png_byte>(Clamp(255.f * 
 							png_byte gray = static_cast<png_byte>(Clamp(255.f * 
 								pixels[x + y * xPixelCount].Y(), 0.f, 255.f));
 							png_byte a = static_cast<png_byte>(Clamp(255.f * alpha[x + y * xPixelCount], 0.f, 255.f));
@@ -267,7 +259,7 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 					break;
 				case PNG_COLOR_TYPE_RGB:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
 							const RGBColor &c = pixels[(x + y * xPixelCount)];
 							png_byte r = static_cast<png_byte>(Clamp(255.f * c.c[0], 0.f, 255.f));
@@ -282,7 +274,7 @@ void lux_png_error(png_structp png_, png_const_charp msg)
 					break;
 				case PNG_COLOR_TYPE_RGB_ALPHA:
 					{
-						for (int x = 0; x < xPixelCount; ++x)
+						for (u_int x = 0; x < xPixelCount; ++x)
 						{
 							const RGBColor &c = pixels[(x + y * xPixelCount)];
 							png_byte r = static_cast<png_byte>(Clamp(255.f * c.c[0], 0.f, 255.f));

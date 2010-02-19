@@ -40,17 +40,22 @@ public:
 	virtual float GenerateRay(const Sample &sample, Ray *ray) const = 0;
 	virtual bool Sample_W(const TsPack *tspack, const Scene *scene, float u1, float u2, float u3, BSDF **bsdf, float *pdf, SWCSpectrum *We) const {
 		if (!warnOnce)
-			luxError(LUX_BUG, LUX_SEVERE, "Unimplemented Camera::Sample_W");
+		{
+			LOG(LUX_SEVERE,LUX_BUG)<<"Unimplemented Camera::Sample_W";
+		}
 		warnOnce = true;
 		return false;
 	}
 	virtual bool Sample_W(const TsPack *tspack, const Scene *scene, const Point &p, const Normal &n, float u1, float u2, float u3, BSDF **bsdf, float *pdf, float *pdfDirect, VisibilityTester *visibility, SWCSpectrum *We) const {
 		if (!warnOnce)
-			luxError(LUX_BUG, LUX_SEVERE, "Unimplemented Camera::Sample_W");
+		{
+			LOG(LUX_SEVERE,LUX_BUG)<<"Unimplemented Camera::Sample_W";
+		}
 		warnOnce = true;
 		return false;
 	}
-	virtual bool GetSamplePosition(const Point &p, const Vector &wi, float distance, float *x, float *y) const { return false; }
+	virtual bool GetSamplePosition(const Point &p, const Vector &wi,
+		float distance, float *x, float *y) const { return false; }
 	virtual void ClampRay(Ray &ray) const { }
 	virtual bool IsDelta() const;
 	virtual bool IsLensBased() const { return true; }
@@ -79,7 +84,7 @@ public:
 	// ProjectiveCamera Public Methods
 	ProjectiveCamera(const Transform &world2cam,
 		const Transform &world2camEnd,
-	    const Transform &proj, const float Screen[4],
+		const Transform &proj, const float Screen[4],
 		float hither, float yon,
 		float sopen, float sclose, int sdist,
 		float lensr, float focald, Film *film);

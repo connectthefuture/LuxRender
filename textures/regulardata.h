@@ -22,6 +22,7 @@
 
 // regulardata.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
 #include "regular.h"
 #include "paramset.h"
@@ -30,42 +31,22 @@ namespace lux
 {
 
 // RegularDataTexture Declarations
-template <class T>
-class RegularDataFloatTexture : public Texture<T> {
-public:
-	// RegularDataFloatTexture Public Methods
-	RegularDataFloatTexture(const T &v) { value = v; }
-	virtual ~RegularDataFloatTexture() { }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
-		return value;
-	}
-private:
-	T value;
-};
-
-template <class T>
-class RegularDataSpectrumTexture : public Texture<T> {
+class RegularDataTexture : public Texture<SWCSpectrum> {
 public:
 	// RegularDataSpectrumTexture Public Methods
-	RegularDataSpectrumTexture(const float &s, const float &e, const int &n, const float *data) {
-		SPD = new RegularSPD(data, s, e, n);
-	}
-	virtual ~RegularDataSpectrumTexture() { delete SPD; }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
+	RegularDataTexture(float s, float e, u_int n, const float *data)
+		: SPD(data, s, e, n) { }
+	virtual ~RegularDataTexture() { }
+	virtual SWCSpectrum Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
 		return SWCSpectrum(tspack, SPD);
 	}
-	virtual void SetPower(float power, float area) {
-		SPD->Scale(power / (area * M_PI * SPD->Y()));
-	}
-private:
-	RegularSPD* SPD;
-};
+	virtual float Y() const { return SPD.Y(); }
+	virtual float Filter() const { return SPD.Filter(); }
+	static Texture<SWCSpectrum> *CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 
-class RegularDataTexture
-{
-public:
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+private:
+	RegularSPD SPD;
 };
 
 }//namespace lux

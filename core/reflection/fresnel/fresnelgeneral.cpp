@@ -29,10 +29,10 @@ using namespace lux;
 void FresnelGeneral::Evaluate(const TsPack *tspack, float cosi, SWCSpectrum *const f) const {
 	SWCSpectrum cost(sqrtf(max(0.f, 1.f - cosi * cosi)));
 	if (cosi > 0.f)
-		cost = cost / (eta * eta + k * k).Sqrt();
+		cost = cost / eta;
 	else
-		cost = cost * (eta * eta + k * k).Sqrt();
-	cost.Clamp(0.f, 1.f);
+		cost = cost * eta;
+	cost = cost.Clamp(0.f, 1.f);
 	cost = (SWCSpectrum(1.f) - cost * cost).Sqrt();
 	FrFull(fabsf(cosi), cost, eta, k, f);
 }

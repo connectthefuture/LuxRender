@@ -22,6 +22,7 @@
 
 // blackbody.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
 #include "blackbodyspd.h"
 #include "paramset.h"
@@ -30,46 +31,21 @@ namespace lux
 {
 
 // BlackBodyTexture Declarations
-template <class T>
-class BlackBodyFloatTexture : public Texture<T> {
+class BlackBodyTexture : public Texture<SWCSpectrum> {
 public:
 	// BlackBodyTexture Public Methods
-	BlackBodyFloatTexture(const T &v) { value = v; }
-	virtual ~BlackBodyFloatTexture() { }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
-		return value;
-	}
-private:
-	T value;
-};
-
-template <class T>
-class BlackBodySpectrumTexture : public Texture<T> {
-public:
-	// BlackBodyTexture Public Methods
-	BlackBodySpectrumTexture(const float &t) {
-		BBSPD = new BlackbodySPD(t);
-	}
-	virtual ~BlackBodySpectrumTexture() { delete BBSPD; }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
+	BlackBodyTexture(float t) : BBSPD(t) { }
+	virtual ~BlackBodyTexture() { }
+	virtual SWCSpectrum Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
 		return SWCSpectrum(tspack, BBSPD);
 	}
-	virtual void SetPower(float power, float area) {
-		float Y = BBSPD->Y();
-		if (!(Y > 0))
-			return;
-		BBSPD->Scale(power / (area * M_PI * Y));
-	}
+	virtual float Y() const { return BBSPD.Y(); }
+	virtual float Filter() const { return BBSPD.Filter(); }
+	static Texture<SWCSpectrum> *CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 
 private:
-	BlackbodySPD* BBSPD;
-};
-
-class BlackBodyTexture
-{
-public:
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	BlackbodySPD BBSPD;
 };
 
 }//namespace lux

@@ -23,7 +23,7 @@
 // path.cpp*
 #include "lux.h"
 #include "transport.h"
-#include "scene.h"
+#include "renderinghints.h"
 
 namespace lux
 {
@@ -32,33 +32,27 @@ namespace lux
 class PathIntegrator : public SurfaceIntegrator {
 public:
 	// PathIntegrator types
-	enum LightStrategy { SAMPLE_ALL_UNIFORM, SAMPLE_ONE_UNIFORM,
-		SAMPLE_AUTOMATIC
-	};
 	enum RRStrategy { RR_EFFICIENCY, RR_PROBABILITY, RR_NONE };
 
 	// PathIntegrator Public Methods
-	PathIntegrator(LightStrategy st, RRStrategy rst, int md, float cp, bool ie) {
-		lightStrategy = st;
-		rrStrategy = rst;
-		maxDepth = md;
-		continueProbability = cp;
-		bufferId = -1;
-		includeEnvironment = ie;
-	}
-	virtual ~PathIntegrator() { }
-	virtual int Li(const TsPack *tspack, const Scene *scene, const Sample *sample) const;
+	PathIntegrator(RRStrategy rst, u_int md, float cp, bool ie)  :
+		hints(), rrStrategy(rst), maxDepth(md), continueProbability(cp),
+		sampleOffset(0), bufferId(0), includeEnvironment(ie) { }
+
+	virtual u_int Li(const TsPack *tspack, const Scene *scene, const Sample *sample) const;
 	virtual void RequestSamples(Sample *sample, const Scene *scene);
 	virtual void Preprocess(const TsPack *tspack, const Scene *scene);
 	static SurfaceIntegrator *CreateSurfaceIntegrator(const ParamSet &params);
+
 private:
+	SurfaceIntegratorRenderingHints hints;
+
 	// PathIntegrator Private Data
-	LightStrategy lightStrategy;
 	RRStrategy rrStrategy;
-	int maxDepth;
+	u_int maxDepth;
 	float continueProbability;
 	// Declare sample parameters for light source sampling
-	int sampleOffset, bufferId;
+	u_int sampleOffset, bufferId;
 	bool includeEnvironment;
 };
 

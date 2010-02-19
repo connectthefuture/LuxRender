@@ -23,6 +23,7 @@
 // qbvhaccel.h*
 
 #include "lux.h"
+#include "memory.h"
 #include "primitive.h"
 
 #include <xmmintrin.h>
@@ -31,6 +32,9 @@ using boost::int32_t;
 
 namespace lux
 {
+
+class QuadRay;
+class QuadPrimitive;
 
 // This code is based on Flexray by Anthony Pajot (anthony.pajot@alumni.enseeiht.fr)
 
@@ -74,19 +78,10 @@ public:
 	int32_t children[4];
 
 	/**
-	   The 3 axis of split (main, sub-left, sub-right). 0 = x, 1 = y, 2 = z
-	*/
-	int32_t axisMain, axisSubLeft, axisSubRight;
-
-	/** Optimisation for shadow rays : keep the parent node index */
-	int32_t parentNodeIndex;
-	
-	/**
 	   Base constructor, init correct bounding boxes and a "root" node
 	   (parentNodeIndex == -1)
 	*/
-	inline QBVHNode() : axisMain(0), axisSubLeft(0), axisSubRight(0),
-		parentNodeIndex(-1) {
+	inline QBVHNode() {
 		for (int i = 0; i < 3; ++i) {
 			bboxes[0][i] = _mm_set1_ps(INFINITY);
 			bboxes[1][i] = _mm_set1_ps(-INFINITY);
@@ -137,7 +132,7 @@ public:
 	   @return
 	*/
 	inline u_int NbQuadsInLeaf(int i) const {
-		return (((children[i] >> 27) & 15)) + 1;
+		return static_cast<u_int>((children[i] >> 27) & 0xf) + 1;
 	}
 
 	/**
@@ -145,7 +140,7 @@ public:
 	   @param index
 	*/
 	inline static u_int NbQuadPrimitives(int32_t index) {
-		return ((index >> 27) & 15) + 1;
+		return static_cast<u_int>((index >> 27) & 0xf) + 1;
 	}
 	
 	/**
@@ -190,9 +185,9 @@ public:
 			// Put the negative sign in a plateform independent way
 			children[i] = 0x80000000;//-1L & ~(-1L >> 1L);
 			
-			children[i] |=  ((nbQuads - 1) & 0xff) << 27;
+			children[i] |=  ((static_cast<int32_t>(nbQuads) - 1) & 0xf) << 27;
 
-			children[i] |= firstQuadIndex & 0x07ffffff;
+			children[i] |= static_cast<int32_t>(firstQuadIndex) & 0x07ffffff;
 		}
 	}
 
@@ -203,8 +198,8 @@ public:
 	*/
 	inline void SetBBox(int i, const BBox &bbox) {
 		for (int axis = 0; axis < 3; ++axis) {
-			((float *)&(bboxes[0][axis]))[i] = bbox.pMin[axis];
-			((float *)&(bboxes[1][axis]))[i] = bbox.pMax[axis];
+			reinterpret_cast<float *>(&(bboxes[0][axis]))[i] = bbox.pMin[axis];
+			reinterpret_cast<float *>(&(bboxes[1][axis]))[i] = bbox.pMax[axis];
 		}
 	}
 
@@ -222,13 +217,9 @@ public:
 	   @return an int used to index the array of paths in the bboxes
 	   (the visit array)
 	*/
-	int32_t BBoxIntersect(__m128 sseOrig[3], __m128 sseInvDir[3],
-		const __m128 &sseTMin, const __m128 &sseTMax,
+	int32_t inline BBoxIntersect(const QuadRay &ray4, const __m128 invDir[3],
 		const int sign[3]) const;
-
-	
 };
-
 
 /***************************************************/
 class QBVHAccel : public Aggregate {
@@ -240,7 +231,7 @@ public:
 	   @param fst the threshold before switching to full sweep for split
 	   @param sf the skip factor during split determination
 	*/
-	QBVHAccel(const vector<boost::shared_ptr<Primitive> > &p, int mp, float fst, int sf);
+	QBVHAccel(const vector<boost::shared_ptr<Primitive> > &p, u_int mp, u_int fst, u_int sf);
 
 	/**
 	   to free the memory.
@@ -332,7 +323,7 @@ private:
 			nodes = newNodes;
 			maxNodes *= 2;
 		}
-		nodes[index].parentNodeIndex = parentIndex;
+
 		if (parentIndex >= 0) {
 			nodes[parentIndex].children[childIndex] = index;
 			nodes[parentIndex].SetBBox(childIndex, nodeBbox);
@@ -374,7 +365,7 @@ private:
 	   test will be redone for the nearest triangle found, to
 	   fill the Intersection structure.
 	*/
-	boost::shared_ptr<Primitive> *prims;
+	boost::shared_ptr<QuadPrimitive> *prims;
 	
 	/**
 	   The number of primitives

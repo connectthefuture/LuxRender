@@ -157,31 +157,81 @@ Point IdentityMapping3D::Map(const DifferentialGeometry &dg,
 	*dpdy = WorldToTexture(dg.dpdy);
 	return WorldToTexture(dg.p);
 }
-void IdentityMapping3D::Apply3DTextureMappingOptions(const TextureParams &tp) {
+void IdentityMapping3D::Apply3DTextureMappingOptions(const ParamSet &tp) {
 	// Apply inverted scale
-	Vector scalev = tp.FindVector("scale", Vector(1., 1., 1.));
-	WorldToTexture = WorldToTexture * Scale(1.f/scalev.x, 1.f/scalev.y, 1.f/scalev.z);
+	Vector scale = tp.FindOneVector("scale", Vector(1.f, 1.f, 1.f));
+	WorldToTexture = WorldToTexture * Scale(1.f / scale.x, 1.f / scale.y,
+		1.f / scale.z);
 	// Apply rotations on X Y and Z axii
-	Vector rotatev = tp.FindVector("rotate", Vector(0., 0., 0.));
-	WorldToTexture = WorldToTexture * RotateX(rotatev.x);
-	WorldToTexture = WorldToTexture * RotateY(rotatev.y);
-	WorldToTexture = WorldToTexture * RotateZ(rotatev.z);
+	Vector rotate = tp.FindOneVector("rotate", Vector(0.f, 0.f, 0.f));
+	WorldToTexture = WorldToTexture * RotateX(rotate.x);
+	WorldToTexture = WorldToTexture * RotateY(rotate.y);
+	WorldToTexture = WorldToTexture * RotateZ(rotate.z);
 	// Apply negated Translation
-	Vector translatev = tp.FindVector("translate", Vector(0., 0., 0.));
-	WorldToTexture = WorldToTexture * Translate(-translatev);
+	Vector translate = tp.FindOneVector("translate", Vector(0.f, 0.f, 0.f));
+	WorldToTexture = WorldToTexture * Translate(-translate);
 }
-void LatLongMapping::Map(const Vector &wh, float *s, float *t) const {
+void LatLongMapping::Map(const Vector &wh, float *s, float *t, float *pdf) const
+{
+	const float theta = SphericalTheta(wh);
 	*s = SphericalPhi(wh) * INV_TWOPI;
-	*t = SphericalTheta(wh) * INV_PI;
+	*t = theta * INV_PI;
+	if (pdf)
+		*pdf = INV_TWOPI * INV_PI / sinf(theta);
 }
-void AngularMapping::Map(const Vector &wh, float *s, float *t) const {
-	float r = sqrtf(wh.y*wh.y + wh.z*wh.z);
-	if (r > 1e-9)
-		r = INV_TWOPI * acosf(Clamp(-wh.x, -1.f, 1.f)) / r;
-	*s = 0.5f - wh.y * r;
-	*t = 0.5f - wh.z * r;
+void LatLongMapping::Map(float s, float t, Vector *wh, float *pdf) const
+{
+	const float phi = s * 2.f * M_PI;
+	const float theta = t * M_PI;
+	const float sinTheta = sinf(theta);
+	*wh = SphericalDirection(sinTheta, cosf(theta), phi);
+	if (pdf)
+		*pdf = INV_TWOPI * INV_PI / sinTheta;
 }
-void VerticalCrossMapping::Map(const Vector &wh, float *s, float *t) const {
+void AngularMapping::Map(const Vector &wh, float *s, float *t, float *pdf) const
+{
+	const float sinTheta = sqrtf(wh.y*wh.y + wh.z*wh.z);
+	const float r = INV_TWOPI * acosf(Clamp(-wh.x, -1.f, 1.f));
+	if (sinTheta > 1e-9f) {
+		const float factor = r / sinTheta;
+		*s = 0.5f - wh.y * factor;
+		*t = 0.5f - wh.z * factor;
+	} else if (fabsf(wh.y) > fabsf(wh.z)) {
+		*s = 0.5f * (1.f - SignOf(wh.y));
+		*t = 0.5f;
+	} else {
+		*s = 0.5f;
+		*t = 0.5f * (1.f - SignOf(wh.z));
+	}
+	if (pdf) {
+		if (r > 1e-9f)
+			*pdf = INV_TWOPI * sinTheta / r;
+		else
+			*pdf = 1.f;
+	}
+}
+void AngularMapping::Map(float s, float t, Vector *wh, float *pdf) const
+{
+	const float r = sqrtf((s - .5f) * (s - .5f) + (t - .5f) * (t - .5f));
+	if (r > .5f) {
+		if (pdf)
+			*pdf = 0.f;
+		return;
+	}
+	const float theta = 2.f * M_PI * r;
+	wh->x = -cosf(theta);
+	const float phi = atan2f(t - .5f, s - .5f);
+	const float sinTheta = sinf(theta);
+	wh->y = sinTheta * cosf(phi);
+	wh->z = sinTheta * sinf(phi);
+	if (pdf) {
+		if (r > 1e-9f)
+			*pdf = INV_TWOPI * sinTheta / r;
+		else
+			*pdf = 1.f;
+	}
+}
+void VerticalCrossMapping::Map(const Vector &wh, float *s, float *t, float *pdf) const {
 	int axis = 0;
 	float ma = fabsf(wh.x);
 	if (fabsf(wh.y) > ma) {
@@ -192,7 +242,7 @@ void VerticalCrossMapping::Map(const Vector &wh, float *s, float *t) const {
 		ma = fabsf(wh.z);
 		axis = 2;
 	}
-	float ima = 1.f / ma;
+	const float ima = 1.f / ma;
 	float sc = 0.0f, tc = 0.0f;
 	float so = 0.0f, to = 0.0f;
 	// select cube face based on major axis
@@ -242,35 +292,72 @@ void VerticalCrossMapping::Map(const Vector &wh, float *s, float *t) const {
 	// rescale and offset to correct cube face in cross
 	*s = (*s + so) * (1.f / 3.f);
 	*t = (*t + to) * (1.f / 4.f);
+	if (pdf)
+		*pdf = ima * ima * ima / 48.f;
+}
+void VerticalCrossMapping::Map(float s, float t, Vector *wh, float *pdf) const
+{
+	const u_int so = min(2U, Floor2UInt(3.f * s));
+	const u_int to = min(3U, Floor2UInt(4.f * t));
+	const float sc = (3.f * s - so) * 2.f - 1.f;
+	const float tc = (4.f * t - to) * 2.f - 1.f;
+	switch (4 * so + to) {
+		case 1:
+			*wh = Vector(-sc, 1.f, -tc);
+			break;
+		case 4:
+			*wh = Vector(-tc, -sc, 1.f);
+			break;
+		case 5:
+			*wh = Vector(-1.f, -sc, -tc);
+			break;
+		case 6:
+			*wh = Vector(tc, -sc, -1.f);
+			break;
+		case 7:
+			*wh = Vector(1.f, -sc, tc);
+			break;
+		case 9:
+			*wh = Vector(sc, -1.f, -tc);
+			break;
+		default:
+			if (pdf)
+				*pdf = 0.f;
+			return;
+	}
+	const float ima = 1.f / wh->Length();
+	*wh *= ima;
+	if (pdf)
+		*pdf = ima * ima * ima / 48.f;
 }
  float Noise(float x, float y, float z) {
 	// Compute noise cell coordinates and offsets
 	int ix = Floor2Int(x);
 	int iy = Floor2Int(y);
 	int iz = Floor2Int(z);
-	float dx = x - ix, dy = y - iy, dz = z - iz;
+	const float dx = x - ix, dy = y - iy, dz = z - iz;
 	// Compute gradient weights
 	ix &= (NOISE_PERM_SIZE-1);
 	iy &= (NOISE_PERM_SIZE-1);
 	iz &= (NOISE_PERM_SIZE-1);
-	float w000 = Grad(ix,   iy,   iz,   dx,   dy,   dz);
-	float w100 = Grad(ix+1, iy,   iz,   dx-1, dy,   dz);
-	float w010 = Grad(ix,   iy+1, iz,   dx,   dy-1, dz);
-	float w110 = Grad(ix+1, iy+1, iz,   dx-1, dy-1, dz);
-	float w001 = Grad(ix,   iy,   iz+1, dx,   dy,   dz-1);
-	float w101 = Grad(ix+1, iy,   iz+1, dx-1, dy,   dz-1);
-	float w011 = Grad(ix,   iy+1, iz+1, dx,   dy-1, dz-1);
-	float w111 = Grad(ix+1, iy+1, iz+1, dx-1, dy-1, dz-1);
+	const float w000 = Grad(ix,   iy,   iz,   dx,   dy,   dz);
+	const float w100 = Grad(ix+1, iy,   iz,   dx-1, dy,   dz);
+	const float w010 = Grad(ix,   iy+1, iz,   dx,   dy-1, dz);
+	const float w110 = Grad(ix+1, iy+1, iz,   dx-1, dy-1, dz);
+	const float w001 = Grad(ix,   iy,   iz+1, dx,   dy,   dz-1);
+	const float w101 = Grad(ix+1, iy,   iz+1, dx-1, dy,   dz-1);
+	const float w011 = Grad(ix,   iy+1, iz+1, dx,   dy-1, dz-1);
+	const float w111 = Grad(ix+1, iy+1, iz+1, dx-1, dy-1, dz-1);
 	// Compute trilinear interpolation of weights
-	float wx = NoiseWeight(dx);
-	float wy = NoiseWeight(dy);
-	float wz = NoiseWeight(dz);
-	float x00 = Lerp(wx, w000, w100);
-	float x10 = Lerp(wx, w010, w110);
-	float x01 = Lerp(wx, w001, w101);
-	float x11 = Lerp(wx, w011, w111);
-	float y0 = Lerp(wy, x00, x10);
-	float y1 = Lerp(wy, x01, x11);
+	const float wx = NoiseWeight(dx);
+	const float wy = NoiseWeight(dy);
+	const float wz = NoiseWeight(dz);
+	const float x00 = Lerp(wx, w000, w100);
+	const float x10 = Lerp(wx, w010, w110);
+	const float x01 = Lerp(wx, w001, w101);
+	const float x11 = Lerp(wx, w011, w111);
+	const float y0 = Lerp(wy, x00, x10);
+	const float y1 = Lerp(wy, x01, x11);
 	return Lerp(wz, y0, y1);
 }
  float Noise(const Point &P) {
@@ -278,32 +365,31 @@ void VerticalCrossMapping::Map(const Vector &wh, float *s, float *t) const {
 }
 inline float Grad(int x, int y, int z, float dx,
 		float dy, float dz) {
- 	int h = NoisePerm[NoisePerm[NoisePerm[x]+y]+z];
-	h &= 15;
-	float u = h<8 || h==12 || h==13 ? dx : dy;
-	float v = h<4 || h==12 || h==13 ? dy : dz;
+ 	const int h = NoisePerm[NoisePerm[NoisePerm[x] + y] + z] & 15;
+	const float u = h < 8 || h == 12 || h == 13 ? dx : dy;
+	const float v = h < 4 || h == 12 || h == 13 ? dy : dz;
 	return ((h&1) ? -u : u) + ((h&2) ? -v : v);
 }
 inline float NoiseWeight(float t) {
-	float t3 = t*t*t;
-	float t4 = t3*t;
+	const float t3 = t * t * t;
+	const float t4 = t3 * t;
 	return 6.f*t4*t - 15.f*t4 + 10.f*t3;
 }
  float FBm(const Point &P, const Vector &dpdx,
 		const Vector &dpdy, float omega, int maxOctaves) {
 	// Compute number of octaves for anti-aliased FBm
-	float s2 = max(dpdx.LengthSquared(), dpdy.LengthSquared());
-	float foctaves = min((float)maxOctaves,
+	const float s2 = max(dpdx.LengthSquared(), dpdy.LengthSquared());
+	const float foctaves = min(static_cast<float>(maxOctaves),
 	                     1.f - .5f * Log2(s2));
-	int octaves = Floor2Int(foctaves);
+	const int octaves = Floor2Int(foctaves);
 	// Compute sum of octaves of noise for FBm
-	float sum = 0., lambda = 1., o = 1.;
+	float sum = 0.f, lambda = 1.f, o = 1.f;
 	for (int i = 0; i < octaves; ++i) {
 		sum += o * Noise(lambda * P);
 		lambda *= 1.99f;
 		o *= omega;
 	}
-	float partialOctave = foctaves - octaves;
+	const float partialOctave = foctaves - static_cast<float>(octaves);
 	sum += o * SmoothStep(.3f, .7f, partialOctave) *
 	       Noise(lambda * P);
 	return sum;
@@ -311,18 +397,18 @@ inline float NoiseWeight(float t) {
  float Turbulence(const Point &P, const Vector &dpdx,
 		const Vector &dpdy, float omega, int maxOctaves) {
 	// Compute number of octaves for anti-aliased FBm
-	float s2 = max(dpdx.LengthSquared(), dpdy.LengthSquared());
-	float foctaves = min((float)maxOctaves,
+	const float s2 = max(dpdx.LengthSquared(), dpdy.LengthSquared());
+	const float foctaves = min(static_cast<float>(maxOctaves),
 	                     1.f - .5f * Log2(s2));
-	int octaves = Floor2Int(foctaves);
+	const int octaves = Floor2Int(foctaves);
 	// Compute sum of octaves of noise for turbulence
-	float sum = 0., lambda = 1., o = 1.;
+	float sum = 0.f, lambda = 1.f, o = 1.f;
 	for (int i = 0; i < octaves; ++i) {
 		sum += o * fabsf(Noise(lambda * P));
 		lambda *= 1.99f;
 		o *= omega;
 	}
-	float partialOctave = foctaves - octaves;
+	const float partialOctave = foctaves - static_cast<float>(octaves);
 	sum += o * SmoothStep(.3f, .7f, partialOctave) *
 	       fabsf(Noise(lambda * P));
 	return sum;
@@ -330,11 +416,13 @@ inline float NoiseWeight(float t) {
 // Texture Function Definitions
  float Lanczos(float x, float tau) {
 	x = fabsf(x);
-	if (x < 1e-5) return 1;
-	if (x > 1.)    return 0;
+	if (x < 1e-5f)
+		return 1.f;
+	else if (x > 1.f)
+		return 0.f;
 	x *= M_PI;
-	float s = sinf(x * tau) / (x * tau);
-	float lanczos = sinf(x) / x;
+	const float s = sinf(x * tau) / (x * tau);
+	const float lanczos = sinf(x) / x;
 	return s * lanczos;
 }
  

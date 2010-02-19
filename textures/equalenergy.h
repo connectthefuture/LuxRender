@@ -22,6 +22,7 @@
 
 // equalenergy.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
 #include "equalspd.h"
 #include "paramset.h"
@@ -30,44 +31,21 @@ namespace lux
 {
 
 // EqualEnergyTexture Declarations
-template <class T>
-class EqualEnergyFloatTexture : public Texture<T> {
+class EqualEnergyTexture : public Texture<SWCSpectrum> {
 public:
 	// EqualEnergyTexture Public Methods
-	EqualEnergyFloatTexture(const T &v) { value = v; }
-	virtual ~EqualEnergyFloatTexture() { }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
-		return value;
+	EqualEnergyTexture(float t) : e(t) { }
+	virtual ~EqualEnergyTexture() { }
+	virtual SWCSpectrum Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
+		return SWCSpectrum(e);
 	}
-private:
-	T value;
-};
+	virtual float Y() const { return EqualSPD(e).Y(); }
+	virtual float Filter() const { return e; }
+	static Texture<SWCSpectrum> *CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 
-template <class T>
-class EqualEnergySpectrumTexture : public Texture<T> {
-public:
-	// EqualEnergyTexture Public Methods
-	EqualEnergySpectrumTexture(const float &t) {
-		e = t;
-		weight = 1.f;
-	}
-	virtual ~EqualEnergySpectrumTexture() { }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
-		return SWCSpectrum(e * weight);
-	}
-	virtual void SetPower(float power, float area) {
-		weight = power / (area * M_PI * 1.f);
-	}
 private:
 	float e;
-	float weight;
-};
-
-class EqualEnergyTexture
-{
-public:
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
 };
 
 }//namespace lux

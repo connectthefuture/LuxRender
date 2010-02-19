@@ -36,12 +36,8 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
 
-#include "lux.h"
 #include "api.h"
-#include "context.h"
-#include "error.h"
 #include "renderserver.h"
-#include "osfunc.h"
 
 #if defined(WIN32) && !defined(__CYGWIN__) /* We need the following two to set stdout to binary */
 #include <io.h>
@@ -64,7 +60,7 @@ void engineThread() {
 	// NOTE - lordcrc - initialize rand()
 	srand(time(NULL));
 
-    ParseFile(sceneFileName.c_str());
+    luxParse(sceneFileName.c_str());
     if (luxStatistics("sceneIsReady") == 0.)
         parseError = true;
 }
@@ -169,10 +165,10 @@ int main(int ac, char *av[]) {
 		}
 
 		if (vm.count("verbosity"))
-			luxLogFilter = vm["verbosity"].as<int>();
+			luxErrorFilter(vm["verbosity"].as<int>());
 
 		ss.str("");
-		ss << "Lux version " << LUX_VERSION_STRING << " of " << __DATE__ << " at " << __TIME__;
+		ss << "Lux version " << luxVersion() << " of " << __DATE__ << " at " << __TIME__;
 		luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
 		if (vm.count("version"))
 			return 0;
@@ -181,7 +177,7 @@ int main(int ac, char *av[]) {
 			threads = vm["threads"].as<int>();
 		else {
 			// Dade - check for the hardware concurrency available
-			threads = osHardwareConcurrency();
+			threads = boost::thread::hardware_concurrency();
 			if (threads == 0)
 				threads = 1;
 		}
@@ -231,13 +227,13 @@ int main(int ac, char *av[]) {
 				const float maxe = vm["maxepsilon"].as<float>();
 				luxSetEpsilon(mine, maxe);
 			} else
-				luxSetEpsilon(mine, DEFAULT_EPSILON_MAX);
+				luxSetEpsilon(mine, -1.f);
 		} else {
 			if (vm.count("maxepsilon")) {
 				const float maxe = vm["maxepsilon"].as<float>();
-				luxSetEpsilon(DEFAULT_EPSILON_MIN, maxe);
+				luxSetEpsilon(-1.f, maxe);
 			} else
-				luxSetEpsilon(DEFAULT_EPSILON_MIN, DEFAULT_EPSILON_MAX);
+				luxSetEpsilon(-1.f, -1.f);
 		}
 
 		if (vm.count("input-file")) {
@@ -282,7 +278,7 @@ int main(int ac, char *av[]) {
 				//add rendering threads
 				int threadsToAdd = threads;
 				while (--threadsToAdd)
-					Context::luxAddThread();
+					luxAddThread();
 
 				//launch info printing thread
 				boost::thread info(&infoThread);

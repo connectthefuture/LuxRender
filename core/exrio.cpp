@@ -21,14 +21,11 @@
  ***************************************************************************/
 
 // exrio.cpp*
-//#ifdef __APPLE__
 #include "lux.h"
 #include "error.h"
 #include "color.h"
-#include "color.h"
 #include "spectrum.h"
 #include "imagereader.h"
-//#endif
 #include <algorithm>
 
 #include <boost/filesystem/path.hpp>
@@ -102,20 +99,16 @@ namespace lux {
 
     ImageData *ExrImageReader::read(const string &name) {
         try {
-			stringstream ss;
-			ss << "Loading OpenEXR Texture: '" << name << "'...";
-            luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+            LOG(LUX_INFO,LUX_NOERROR)<< "Loading OpenEXR Texture: '" << name << "'...";
 
 			InputFile file(name.c_str());
             Box2i dw = file.header().dataWindow();
-            int width = dw.max.x - dw.min.x + 1;
-            int height = dw.max.y - dw.min.y + 1;
+            u_int width = dw.max.x - dw.min.x + 1;
+            u_int height = dw.max.y - dw.min.y + 1;
             //todo: verify if this is always correct
-            int noChannels = 3;
+            u_int noChannels = 3;
 
-			ss.str("");
-			ss << width << "x" << height << " (" << noChannels << " channels)";
-            luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+			LOG(LUX_INFO,LUX_NOERROR)<<  width << "x" << height << " (" << noChannels << " channels)";
 
             half *rgb = new half[noChannels * width * height];
 
@@ -133,7 +126,7 @@ namespace lux {
             ImageData* data = new ImageData(width, height, ImageData::FLOAT_TYPE, noChannels, ret);
 
             // XXX should do real RGB -> RGBColor conversion here
-            for (int i = 0; i < width * height; ++i) {
+            for (u_int i = 0; i < width * height; ++i) {
                 float c[3] = { rgb[(3 * i)], rgb[(3 * i) + 1], rgb[(3 * i) + 2] };
                 ret[i] = TextureColor<float, 3 > (c);
 
@@ -144,9 +137,7 @@ namespace lux {
 
             return data;
         } catch (const std::exception &e) {
-            std::stringstream ss;
-            ss << "Unable to read EXR image file '" << name << "': " << e.what();
-            luxError(LUX_BUG, LUX_ERROR, ss.str().c_str());
+        	LOG(LUX_ERROR,LUX_BUG)<< "Unable to read EXR image file '" << name << "': " << e.what();
             return NULL;
         }
     }
@@ -162,15 +153,12 @@ namespace lux {
         if (size == 4)
             type = ImageData::FLOAT_TYPE;
 
-        int width = image.dimx();
-        int height = image.dimy();
-        int noChannels = image.dimv();
-        int pixels = width * height;
+        u_int width = image.dimx();
+        u_int height = image.dimy();
+        u_int noChannels = image.dimv();
+        u_int pixels = width * height;
 
-		stringstream ss;
-		ss.str("");
-		ss << width << "x" << height << " (" << noChannels << " channels)";
-        luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+        LOG(LUX_INFO,LUX_NOERROR)<< width << "x" << height << " (" << noChannels << " channels)";
 		
         TextureColorBase* ret;
 		// Dade - we support 1, 3 and 4 channel images
@@ -181,11 +169,7 @@ namespace lux {
         else if (noChannels == 4)
             ret = new TextureColor<T, 4> [width * height];
 		else {
-			ss.str("");
-			ss << "Unsupported channel count in StandardImageReader::read(" <<
-					name << ": " << noChannels;
-			luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
-
+			LOG(LUX_ERROR,LUX_SYSTEM)<< "Unsupported channel count in StandardImageReader::read(" << name << ": " << noChannels;
 			return NULL;
 		}
 
@@ -193,11 +177,11 @@ namespace lux {
         T *c = new T[noChannels];
         c[0] = 0;
         // XXX should do real RGB -> RGBColor conversion here
-        for (int i = 0; i < width; ++i)
-            for (int j = 0; j < height; ++j) {
-                for (int k = 0; k < noChannels; ++k) {
+        for (u_int i = 0; i < width; ++i)
+            for (u_int j = 0; j < height; ++j) {
+                for (u_int k = 0; k < noChannels; ++k) {
                     // assuming that cimg depth is 1, single image layer
-                    unsigned long off = i + (j * width) + (k * pixels);
+                    u_int off = i + (j * width) + (k * pixels);
 
 					if (noChannels == 1)
 						((TextureColor<T, 1> *)ret)[i + (j * width)].c[k] = image[off];
@@ -214,9 +198,7 @@ namespace lux {
 
     template <typename T> ImageData * StandardImageReader<T>::read(const string &name) {
         try {
-			stringstream ss;
-			ss << "Loading Cimg Texture: '" << name << "'...";
-            luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+        	LOG(LUX_INFO,LUX_NOERROR)<< "Loading Cimg Texture: '" << name << "'...";
 
 			CImg<T> image(name.c_str());
             size_t size = sizeof (T);
@@ -231,9 +213,7 @@ namespace lux {
 			}
 			return createImageData( name, image );
 		} catch (CImgIOException &e) {
-            std::stringstream ss;
-            ss << "Unable to read Cimg image file '" << name << "': " << e.message;
-            luxError(LUX_BUG, LUX_ERROR, ss.str().c_str());
+			LOG(LUX_ERROR,LUX_BUG)<< "Unable to read Cimg image file '" << name << "': " << e.message;
             return NULL;
         }
         return NULL;
@@ -243,11 +223,9 @@ namespace lux {
 		try {
 			boost::filesystem::path imagePath(name);
 			// boost::filesystem::exists() can throw an exception under Windows
-			// if the driver in imagePath doesn't exist
+			// if the drive in imagePath doesn't exist
 			if (!boost::filesystem::exists(imagePath)) {
-				std::stringstream ss;
-				ss << "Unable to open image file '" << imagePath.string() << "'";
-				luxError(LUX_NOFILE, LUX_ERROR, ss.str().c_str());
+				LOG(LUX_ERROR,LUX_NOFILE)<< "Unable to open image file '" << imagePath.string() << "'";
 				return NULL;
 			}
 
@@ -305,22 +283,18 @@ namespace lux {
 				return stdImageReader.read(name);
 			}
 
-			std::stringstream ss;
-			ss << "Cannot recognise file format for image '" << name << "'";
-			luxError(LUX_BADFILE, LUX_ERROR, ss.str().c_str());
+			LOG(LUX_ERROR,LUX_BADFILE)<< "Cannot recognise file format for image '" << name << "'";
 			return NULL;
 		} catch (const std::exception &e) {
-			std::stringstream ss;
-			ss << "Unable to read image file '" << name << "': " << e.what();
-			luxError(LUX_BUG, LUX_ERROR, ss.str().c_str());
+			LOG(LUX_ERROR,LUX_BUG)<< "Unable to read image file '" << name << "': " << e.what();
 			return NULL;
 		}
     }
 
    void WriteOpenEXRImage(int channeltype, bool halftype, bool savezbuf, int compressiontype, const string &name, vector<RGBColor> &pixels,
-            vector<float> &alpha, int xRes, int yRes,
-            int totalXRes, int totalYRes,
-            int xOffset, int yOffset, vector<float> &zbuf) {
+            vector<float> &alpha, u_int xRes, u_int yRes,
+            u_int totalXRes, u_int totalYRes,
+            u_int xOffset, u_int yOffset, vector<float> &zbuf) {
 		Header header(totalXRes, totalYRes);
 
 		// Set Compression
@@ -384,8 +358,8 @@ namespace lux {
 		half *hy = NULL;
 		half *hrgb = NULL;
 		half *ha = NULL;
-		const int bufSize = xRes * yRes;
-		const int bufOffset = xOffset + yOffset * xRes;
+		const u_int bufSize = xRes * yRes;
+		const u_int bufOffset = xOffset + yOffset * xRes;
 
 		if(!halftype) {
 			// Write framebuffer data for 32bit FLOAT type
@@ -393,7 +367,7 @@ namespace lux {
 				// Save Y
 				fy = new float[bufSize];
 				// FIXME use the correct color space
-				for (int i = 0; i < bufSize; ++i)
+				for (u_int i = 0; i < bufSize; ++i)
 					fy[i] = (0.3f * pixels[i].c[0]) + (0.59f * pixels[i].c[1]) + (0.11f * pixels[i].c[2]);
 				fb.insert("Y", Slice(Imf::FLOAT, (char *)(fy - bufOffset), sizeof(float), xRes * sizeof(float)));
 			} else if(channeltype >= 2) {
@@ -414,14 +388,14 @@ namespace lux {
 				// Save Y
 				hy = new half[bufSize];
 				//FIXME use correct color space
-				for (int i = 0; i < bufSize; ++i)
+				for (u_int i = 0; i < bufSize; ++i)
 					hy[i] = (0.3f * pixels[i].c[0]) + (0.59f * pixels[i].c[1]) + (0.11f * pixels[i].c[2]);
 				fb.insert("Y", Slice(HALF, (char *)(hy - bufOffset), sizeof(half), xRes * sizeof(half)));
 			} else if(channeltype >= 2) {
 				// Save RGB
 				hrgb = new half[3 * bufSize];
-				for (int i = 0; i < bufSize; ++i)
-					for( int j = 0; j < 3; j++)
+				for (u_int i = 0; i < bufSize; ++i)
+					for( u_int j = 0; j < 3; j++)
 						hrgb[3 * i + j] = pixels[i].c[j];
 				fb.insert("R", Slice(HALF, (char *)(hrgb - 3 * bufOffset), 3 * sizeof(half), xRes * (3 * sizeof(half))));
 				fb.insert("G", Slice(HALF, (char *)(hrgb - 3 * bufOffset) + sizeof(half), 3 * sizeof(half), xRes * (3 * sizeof(half))));
@@ -430,7 +404,7 @@ namespace lux {
 			if(channeltype == 1 || channeltype == 3) {
 				// Add alpha
 				ha = new half[bufSize];
-				for (int i = 0; i < bufSize; ++i)
+				for (u_int i = 0; i < bufSize; ++i)
 					ha[i] = alpha[i];		
 				fb.insert("A", Slice(HALF, (char *)(ha - bufOffset), sizeof(half), xRes * sizeof(half)));
 			}
@@ -447,9 +421,7 @@ namespace lux {
 			file.setFrameBuffer(fb);
 			file.writePixels(yRes);
 		} catch (const std::exception &e) {
-			std::stringstream ss;
-			ss << "Unable to write image file '" << name << "': " << e.what();
-			luxError(LUX_BUG, LUX_SEVERE, ss.str().c_str());
+			LOG(LUX_SEVERE,LUX_BUG)<< "Unable to write image file '" << name << "': " << e.what();
 		}
 
 		// Cleanup used buffers

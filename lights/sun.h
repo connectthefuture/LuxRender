@@ -34,16 +34,15 @@ namespace lux
 class SunLight : public Light {
 public:
 	// SunLight Public Methods
-	SunLight(const Transform &light2world, const float sunscale, const Vector &dir, float turb, float relSize, int ns);
+	SunLight(const Transform &light2world, const float sunscale, const Vector &dir, float turb, float relSize, u_int ns);
 	virtual ~SunLight() { delete LSPD; }
 	virtual bool IsDeltaLight() const { return cosThetaMax == 1.0; }
 	virtual bool IsEnvironmental() const { return true; }
-	virtual SWCSpectrum Power(const TsPack *tspack, const Scene *scene) const {
+	virtual float Power(const Scene *scene) const {
 		Point worldCenter;
 		float worldRadius;
-		scene->WorldBound().BoundingSphere(&worldCenter,
-		                                   &worldRadius);
-		return SWCSpectrum(tspack, LSPD) * (havePortalShape ? PortalArea : M_PI * worldRadius * worldRadius) * 2.f * M_PI * (1.f - cosThetaMax);
+		scene->WorldBound().BoundingSphere(&worldCenter, &worldRadius);
+		return LSPD->Y() * (havePortalShape ? PortalArea : M_PI * worldRadius * worldRadius) * 2.f * M_PI * (1.f - cosThetaMax);
 	}
 	virtual SWCSpectrum Le(const TsPack *tspack, const RayDifferential &r) const;
 	virtual SWCSpectrum Le(const TsPack *tspack, const Scene *scene, const Ray &r,
@@ -52,18 +51,18 @@ public:
 		Vector *wo, float *pdf, VisibilityTester *visibility) const;
 	virtual SWCSpectrum Sample_L(const TsPack *tspack, const Scene *scene, float u1, float u2,
 		float u3, float u4, Ray *ray, float *pdf) const;
-	virtual float Pdf(const Point &, const Vector &) const;
-	virtual float Pdf(const Point &p, const Normal &n,
+	virtual float Pdf(const TsPack *tspack, const Point &, const Vector &) const;
+	virtual float Pdf(const TsPack *tspack, const Point &p, const Normal &n,
 		const Point &po, const Normal &ns) const;
 
 	virtual bool Sample_L(const TsPack *tspack, const Scene *scene, float u1, float u2, float u3, BSDF **bsdf, float *pdf, SWCSpectrum *Le) const;
 	virtual bool Sample_L(const TsPack *tspack, const Scene *scene, const Point &p, const Normal &n, float u1, float u2, float u3, BSDF **bsdf, float *pdf, float *pdfDirect, VisibilityTester *visibility, SWCSpectrum *Le) const;
 
 	static Light *CreateLight(const Transform &light2world,
-		const ParamSet &paramSet, const TextureParams &tp);
+		const ParamSet &paramSet);
 
 private:
-	bool checkPortals(Ray portalRay) const;
+	bool checkPortals(const TsPack *tspack, Ray portalRay) const;
 
 	// SunLight Private Data
 	Vector sundir;

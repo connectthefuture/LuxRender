@@ -9,3 +9,16 @@
 ^luxlex
 ^luxparse
 ^luxmerger
+^luxcomp
+^pylux
+^doc/html
+^doxygen/doxygen.conf
+syntax: glob
+*.directory
+*.cdtproject
+*.cproject
+*.project
+moc_*.cxx
+ui_*.h
+qrc_*.cxx
+*~

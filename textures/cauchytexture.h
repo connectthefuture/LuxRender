@@ -20,37 +20,35 @@
  *   Lux Renderer website : http://www.luxrender.net                       *
  ***************************************************************************/
 
-// parser.cpp*
+// cauchytexture.h*
 #include "lux.h"
-#include "error.h"
-// Parsing Global Interface
- bool ParseFile(const char *filename) {
-	extern FILE *yyin;
-	extern int yyparse(void);
-	extern string current_file;
-	extern int line_num;
-	/*extern int yydebug;
+#include "texture.h"
+#include "fresneldielectric.h"
+#include "paramset.h"
 
-	if (getenv("LUX_YYDEBUG") != NULL)
-		yydebug = 1;*/
+namespace lux
+{
 
-	if (strcmp(filename, "-") == 0)
-		yyin = stdin;
-	else
-		yyin = fopen(filename, "r");
-	if (yyin != NULL) {
-		current_file = filename;
-		if (yyin == stdin) current_file = "<standard input>";
-		line_num = 1;
-		yyparse();
-		if (yyin != stdin) fclose(yyin);
-	} else {
-		std::stringstream ss;
-		ss<<"Unable to read scenefile '"<<filename<<"'";
-		luxError(LUX_NOFILE, LUX_SEVERE, ss.str ().c_str());
+// CauchyTexture Declarations
+class CauchyTexture : public Texture<const Fresnel *> {
+public:
+	// ConstantTexture Public Methods
+	CauchyTexture(float cauchya, float cauchyb) :
+		fresnel(1.f, cauchya, cauchyb),
+		index(cauchya + cauchyb * 1e6f /
+		(WAVELENGTH_END * WAVELENGTH_START)) { }
+	virtual ~CauchyTexture() { }
+	virtual const Fresnel *Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
+		return &fresnel;
 	}
+	virtual float Y() const { return index; }
 
-	current_file = "";
-	line_num = 0;
-	return (yyin != NULL);
-}
+	static Texture<const Fresnel *> *CreateFresnelTexture(const Transform &tex2world, const ParamSet &tp);
+private:
+	FresnelDielectric fresnel;
+	float index;
+};
+
+}//namespace lux
+

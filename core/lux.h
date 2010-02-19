@@ -30,12 +30,6 @@
 #include <ieeefp.h>
 #endif
 
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/serialization/vector.hpp>
-#include <boost/serialization/string.hpp>
-#include <boost/serialization/split_member.hpp>
-
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
@@ -104,6 +98,26 @@ extern "C" {
 #  define for if (0) ; else for
 #endif
 
+// Global Constants
+#ifdef M_PI
+#  undef M_PI
+#endif
+#define M_PI           3.14159265358979323846f
+#define INV_PI  0.31830988618379067154f
+#define INV_TWOPI  0.15915494309189533577f
+#ifndef INFINITY
+#  define INFINITY HUGE_VAL
+//#define INFINITY std::numeric_limits<float>::max()
+#endif
+#define LUX_VERSION 0.7
+#define LUX_VERSION_STRING "0.7 (devel)"
+#define COLOR_SAMPLES 3
+#if defined(WIN32) && !defined(__CYGWIN__)
+#  define LUX_PATH_SEP ";"
+#else
+#  define LUX_PATH_SEP ":"
+#endif
+
 // Global Type Declarations
 typedef double StatsCounterType;
 typedef unsigned char u_char;
@@ -123,8 +137,6 @@ class StatsCounter;
 class StatsRatio;
 class StatsPercentage;
 
-#include "randomgen.h"
-
 namespace lux
 {
   class Matrix4x4;
@@ -138,7 +150,6 @@ namespace lux
   class BBox;
   class Transform;
   class DifferentialGeometry;
-  class TextureParams;
   class Scene;
   class Primitive;
   class AreaLightPrimitive;
@@ -146,13 +157,12 @@ namespace lux
   class MotionPrimitive;
   class Aggregate;
   class Intersection;
-  class RGBColor;
   class ImageData;
   class SWCSpectrum;
   class SpectrumWavelengths;
-  class Color;
   class RGBColor;
   class XYZColor;
+  class ColorSystem;
   class SPD;
   class Camera;
   class ProjectiveCamera;
@@ -169,7 +179,10 @@ namespace lux
   class Fresnel;
   class FresnelConductor;
   class FresnelDielectric;
+  class FresnelGeneral;
+  class FresnelGeneric;
   class FresnelNoOp;
+  class FresnelSlick;
   class SpecularReflection;
   class SpecularTransmission;
   class Lambertian;
@@ -189,7 +202,8 @@ namespace lux
   class TriangleMesh;
   class PlyMesh;
   template <class T> class Texture;
-  class VolumeRegion;
+  class Volume;
+  class Region;
   class Light;
   struct VisibilityTester;
   class AreaLight;
@@ -202,49 +216,27 @@ namespace lux
   class RenderFarm;
   class Contribution;
   class ContributionBuffer;
+  class ContributionPool;
   class ContributionSystem;
   class MotionSystem;
   class Distribution1D;
+  class Distribution2D;
   class IrregularDistribution1D;
-}
-
-// Global Constants
-#ifdef M_PI
-#  undef M_PI
-#endif
-#define M_PI           3.14159265358979323846f
-#define INV_PI  0.31830988618379067154f
-#define INV_TWOPI  0.15915494309189533577f
-#ifndef INFINITY
-#  define INFINITY HUGE_VAL
-//#define INFINITY std::numeric_limits<float>::max()
-#endif
-#define LUX_VERSION 0.6
-#define LUX_VERSION_STRING "0.6.1"
-#define COLOR_SAMPLES 3
-#if defined(WIN32) && !defined(__CYGWIN__)
-#  define LUX_PATH_SEP ";"
-#else
-#  define LUX_PATH_SEP ":"
-#endif
+  class MachineEpsilon;
+  class SampleableSphericalFunction;
 
 // Global Function Declarations
-bool ParseFile(const char *filename);
-namespace lux
-{
   //string hashing function
   unsigned int DJBHash(const std::string& str);
 
   bool SolveLinearSystem2x2(const float A[2][2], const float B[2], float x[2]);
 
 	ImageData *ReadImage(const string &name);
-}
 
 // Radiance - Thread specific pack of pointers to eliminate use of boost tss smart pointers.
 // Initialized per thread in scene.cpp/RenderThread::RenderThread and passed where needed.
-namespace lux {
-
 	struct TsPack {
+		// Thread specific data
 		SpectrumWavelengths *swl;
 		RandomGenerator *rng;
 		MemoryArena *arena;
@@ -266,6 +258,12 @@ inline int Round2Int(double val) {
 }
 inline int Round2Int(float val) {
 	return static_cast<int>(val > 0.f ? val + .5f : val - .5f);
+}
+inline u_int Round2UInt(double val) {
+	return static_cast<u_int>(val > 0. ? val + .5 : 0.);
+}
+inline u_int Round2UInt(float val) {
+	return static_cast<u_int>(val > 0.f ? val + .5f : 0.f);
 }
 inline int Mod(int a, int b) {
 	// note - radiance - added 0 check to prevent divide by zero error(s)
@@ -292,6 +290,9 @@ inline int Log2Int(float v) {
 inline bool IsPowerOf2(int v) {
 	return (v & (v - 1)) == 0;
 }
+inline bool IsPowerOf2(u_int v) {
+	return (v & (v - 1)) == 0;
+}
 inline u_int RoundUpPow2(u_int v) {
 	v--;
 	v |= v >> 1;
@@ -304,17 +305,32 @@ inline u_int RoundUpPow2(u_int v) {
 template<class T> inline int Float2Int(T val) {
 	return static_cast<int>(val);
 }
+template<class T> inline u_int Float2UInt(T val) {
+	return val >= 0 ? static_cast<u_int>(val) : 0;
+}
 inline int Floor2Int(double val) {
 	return static_cast<int>(floor(val));
 }
 inline int Floor2Int(float val) {
 	return static_cast<int>(floorf(val));
 }
+inline u_int Floor2UInt(double val) {
+	return val > 0. ? static_cast<u_int>(floor(val)) : 0;
+}
+inline u_int Floor2UInt(float val) {
+	return val > 0.f ? static_cast<u_int>(floorf(val)) : 0;
+}
 inline int Ceil2Int(double val) {
 	return static_cast<int>(ceil(val));
 }
 inline int Ceil2Int(float val) {
 	return static_cast<int>(ceilf(val));
+}
+inline u_int Ceil2UInt(double val) {
+	return val > 0. ? static_cast<u_int>(ceil(val)) : 0;
+}
+inline u_int Ceil2UInt(float val) {
+	return val > 0.f ? static_cast<u_int>(ceilf(val)) : 0;
 }
 inline bool Quadratic(float A, float B, float C, float *t0, float *t1) {
 	// Find quadratic discriminant
@@ -337,6 +353,11 @@ inline bool Quadratic(float A, float B, float C, float *t0, float *t1) {
 inline float SmoothStep(float min, float max, float value) {
 	float v = Clamp((value - min) / (max - min), 0.f, 1.f);
 	return v * v * (-2.f * v  + 3.f);
+}
+
+template <class T> int SignOf(T x)
+{
+	return (x > 0) - (x < 0);
 }
 
 #endif // LUX_LUX_H

@@ -28,32 +28,19 @@
 using namespace lux;
 
 // RegularDataTexture Method Definitions
-Texture<float> * RegularDataTexture::CreateFloatTexture(const Transform &tex2world,
-		const TextureParams &tp) {
-	// Dade - unused parameters
-	/*float start =*/ tp.FindFloat("start", 380.f);
-	/*float end =*/ tp.FindFloat("end", 720.f);
-	int dataCount = 0;
-	/*const float *data =*/ tp.FindFloats("data", &dataCount);
-	if (dataCount < 1) {
-		luxError(LUX_MISSINGDATA, LUX_ERROR, "No data in regulardata texture");
+Texture<SWCSpectrum> *RegularDataTexture::CreateSWCSpectrumTexture(const Transform &tex2world,
+	const ParamSet &tp)
+{
+	float start = tp.FindOneFloat("start", 380.f);
+	float end = tp.FindOneFloat("end", 720.f);
+	u_int dataCount = 0;
+	const float *data = tp.FindFloat("data", &dataCount);
+	if (dataCount < 2) {
+		luxError(LUX_MISSINGDATA, LUX_ERROR, "Insufficient data in regulardata texture");
+		const float default_data[] = {1.f, 1.f};
+		return new RegularDataTexture(start, end, 2, default_data);
 	}
-	return new RegularDataFloatTexture<float>(1.f);
+	return new RegularDataTexture(start, end, dataCount, data);
 }
 
-Texture<SWCSpectrum> * RegularDataTexture::CreateSWCSpectrumTexture(const Transform &tex2world,
-		const TextureParams &tp) {
-	float start = tp.FindFloat("start", 380.f);
-	float end = tp.FindFloat("end", 720.f);
-	int dataCount = 0;
-	const float *data = tp.FindFloats("data", &dataCount);
-	if (dataCount < 1) {
-		luxError(LUX_MISSINGDATA, LUX_ERROR, "No data in regulardata texture");
-		float default_data[] = {1.f};
-		return new RegularDataSpectrumTexture<SWCSpectrum>(start, end, 1, default_data);
-	}
-	return new RegularDataSpectrumTexture<SWCSpectrum>(start, end, dataCount, data);
-}
-
-static DynamicLoader::RegisterFloatTexture<RegularDataTexture> r1("regulardata");
-static DynamicLoader::RegisterSWCSpectrumTexture<RegularDataTexture> r2("regulardata");
+static DynamicLoader::RegisterSWCSpectrumTexture<RegularDataTexture> r("regulardata");

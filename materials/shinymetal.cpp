@@ -22,26 +22,33 @@
 
 // shinymetal.cpp*
 #include "shinymetal.h"
+#include "memory.h"
 #include "bxdf.h"
 #include "fresnelgeneral.h"
 #include "blinn.h"
 #include "anisotropic.h"
 #include "microfacet.h"
 #include "specularreflection.h"
+#include "texture.h"
+#include "color.h"
 #include "paramset.h"
 #include "dynload.h"
 
 using namespace lux;
 
 // ShinyMetal Method Definitions
-BSDF *ShinyMetal::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, const DifferentialGeometry &dgShading) const {
+BSDF *ShinyMetal::GetBSDF(const TsPack *tspack,
+	const DifferentialGeometry &dgGeom,
+	const DifferentialGeometry &dgShading,
+	const Volume *exterior, const Volume *interior) const
+{
 	// Allocate _BSDF_, possibly doing bump-mapping with _bumpMap_
 	DifferentialGeometry dgs;
 	if (bumpMap)
 		Bump(bumpMap, dgGeom, dgShading, &dgs);
 	else
 		dgs = dgShading;
-	MultiBSDF *bsdf = BSDF_ALLOC(tspack, MultiBSDF)(dgs, dgGeom.nn);
+	MultiBSDF *bsdf = ARENA_ALLOC(tspack->arena, MultiBSDF)(dgs, dgGeom.nn);
 	SWCSpectrum spec = Ks->Evaluate(tspack, dgs).Clamp();
 	SWCSpectrum R = Kr->Evaluate(tspack, dgs).Clamp();
 
@@ -52,15 +59,18 @@ BSDF *ShinyMetal::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGe
 	float flmindex = filmindex->Evaluate(tspack, dgs);
 
 	MicrofacetDistribution *md;
-	if(u == v)
-		md = BSDF_ALLOC(tspack, Blinn)(1.f / u);
+	if (u == v)
+		md = ARENA_ALLOC(tspack->arena, Blinn)(1.f / u);
 	else
-		md = BSDF_ALLOC(tspack, Anisotropic)(1.f/u, 1.f/v);
+		md = ARENA_ALLOC(tspack->arena, Anisotropic)(1.f / u, 1.f / v);
 
-	Fresnel *frMf = BSDF_ALLOC(tspack, FresnelGeneral)(FresnelApproxEta(spec), FresnelApproxK(spec));
-	Fresnel *frSr = BSDF_ALLOC(tspack, FresnelGeneral)(FresnelApproxEta(R), FresnelApproxK(R));
-	bsdf->Add(BSDF_ALLOC(tspack, Microfacet)(1., frMf, md));
-	bsdf->Add(BSDF_ALLOC(tspack, SpecularReflection)(1., frSr, flm, flmindex));
+	Fresnel *frMf = ARENA_ALLOC(tspack->arena,
+		FresnelGeneral)(FresnelApproxEta(spec), FresnelApproxK(spec));
+	Fresnel *frSr = ARENA_ALLOC(tspack->arena,
+		FresnelGeneral)(FresnelApproxEta(R), FresnelApproxK(R));
+	bsdf->Add(ARENA_ALLOC(tspack->arena, Microfacet)(1.f, frMf, md));
+	bsdf->Add(ARENA_ALLOC(tspack->arena,
+		SpecularReflection)(1.f, frSr, flm, flmindex));
 
 	// Add ptr to CompositingParams structure
 	bsdf->SetCompositingParams(compParams);
@@ -68,14 +78,14 @@ BSDF *ShinyMetal::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGe
 	return bsdf;
 }
 Material* ShinyMetal::CreateMaterial(const Transform &xform,
-		const TextureParams &mp) {
-	boost::shared_ptr<Texture<SWCSpectrum> > Kr = mp.GetSWCSpectrumTexture("Kr", RGBColor(1.f));
-	boost::shared_ptr<Texture<SWCSpectrum> > Ks = mp.GetSWCSpectrumTexture("Ks", RGBColor(1.f));
-	boost::shared_ptr<Texture<float> > uroughness = mp.GetFloatTexture("uroughness", .1f);
-	boost::shared_ptr<Texture<float> > vroughness = mp.GetFloatTexture("vroughness", .1f);
-	boost::shared_ptr<Texture<float> > film = mp.GetFloatTexture("film", 0.f);				// Thin film thickness in nanometers
-	boost::shared_ptr<Texture<float> > filmindex = mp.GetFloatTexture("filmindex", 1.5f);				// Thin film index of refraction
-	boost::shared_ptr<Texture<float> > bumpMap = mp.GetFloatTexture("bumpmap");
+		const ParamSet &mp) {
+	boost::shared_ptr<Texture<SWCSpectrum> > Kr(mp.GetSWCSpectrumTexture("Kr", RGBColor(1.f)));
+	boost::shared_ptr<Texture<SWCSpectrum> > Ks(mp.GetSWCSpectrumTexture("Ks", RGBColor(1.f)));
+	boost::shared_ptr<Texture<float> > uroughness(mp.GetFloatTexture("uroughness", .1f));
+	boost::shared_ptr<Texture<float> > vroughness(mp.GetFloatTexture("vroughness", .1f));
+	boost::shared_ptr<Texture<float> > film(mp.GetFloatTexture("film", 0.f));				// Thin film thickness in nanometers
+	boost::shared_ptr<Texture<float> > filmindex(mp.GetFloatTexture("filmindex", 1.5f));				// Thin film index of refraction
+	boost::shared_ptr<Texture<float> > bumpMap(mp.GetFloatTexture("bumpmap"));
 
 	// Get Compositing Params
 	CompositingParams cP;

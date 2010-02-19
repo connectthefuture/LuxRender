@@ -24,6 +24,7 @@
 #include "lux.h"
 #include "light.h"
 #include "texture.h"
+#include "geometry/raydifferential.h"
 
 namespace lux
 {
@@ -32,37 +33,42 @@ namespace lux
 class SpotLight : public Light {
 public:
 	// SpotLight Public Methods
-	SpotLight(const Transform &light2world, const boost::shared_ptr< Texture<SWCSpectrum> > L, 
+	SpotLight(const Transform &light2world,
+		const boost::shared_ptr< Texture<SWCSpectrum> > &L, 
 		float gain, float width, float fall);
 	virtual ~SpotLight();
 	virtual bool IsDeltaLight() const { return true; }
 	virtual bool IsEnvironmental() const { return false; }
 	float Falloff(const Vector &w) const;
-	virtual SWCSpectrum Power(const TsPack *tspack, const Scene *) const {
-		return Lbase->Evaluate(tspack, dummydg) * gain * 2.f * M_PI *
+	virtual float Power(const Scene *) const {
+		return Lbase->Y() * gain * 2.f * M_PI *
 			(1.f - .5f * (cosFalloffStart + cosTotalWidth));
 	}
 	virtual SWCSpectrum Sample_L(const TsPack *tspack, const Point &P, float u1, float u2, float u3,
 			Vector *wo, float *pdf, VisibilityTester *visibility) const;
 	virtual SWCSpectrum Sample_L(const TsPack *tspack, const Scene *scene, float u1, float u2,
 			float u3, float u4, Ray *ray, float *pdf) const;
-	virtual float Pdf(const Point &, const Vector &) const;
-	virtual float Pdf(const Point &p, const Normal &n,
+	virtual float Pdf(const TsPack *tspack, const Point &, const Vector &) const;
+	virtual float Pdf(const TsPack *tspack, const Point &p, const Normal &n,
 		const Point &po, const Normal &ns) const;
-	virtual bool Sample_L(const TsPack *tspack, const Scene *scene, float u1, float u2, float u3, BSDF **bsdf, float *pdf, SWCSpectrum *Le) const;
-	virtual bool Sample_L(const TsPack *tspack, const Scene *scene, const Point &p, const Normal &n,
-		float u1, float u2, float u3, BSDF **bsdf, float *pdf, float *pdfDirect,
+	virtual bool Sample_L(const TsPack *tspack, const Scene *scene,
+		float u1, float u2, float u3, BSDF **bsdf, float *pdf,
+		SWCSpectrum *Le) const;
+	virtual bool Sample_L(const TsPack *tspack, const Scene *scene,
+		const Point &p, const Normal &n, float u1, float u2, float u3,
+		BSDF **bsdf, float *pdf, float *pdfDirect,
 		VisibilityTester *visibility, SWCSpectrum *Le) const;
-	virtual SWCSpectrum Le(const TsPack *tspack, const Scene *scene, const Ray &r,
-		const Normal &n, BSDF **bsdf, float *pdf, float *pdfDirect) const;
+	virtual SWCSpectrum Le(const TsPack *tspack, const Scene *scene,
+		const Ray &r, const Normal &n, BSDF **bsdf, float *pdf,
+		float *pdfDirect) const;
 	
 	static Light *CreateLight(const Transform &light2world,
-		const ParamSet &paramSet, const TextureParams &tp);
+		const ParamSet &paramSet);
 private:
 	// SpotLight Private Data
 	float cosTotalWidth, cosFalloffStart;
 	Point lightPos;
-	boost::shared_ptr< Texture<SWCSpectrum> > Lbase;
+	boost::shared_ptr<Texture<SWCSpectrum> > Lbase;
 	DifferentialGeometry dummydg;
 	float gain;
 };

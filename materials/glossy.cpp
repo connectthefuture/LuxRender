@@ -24,17 +24,23 @@
 
 // glossy.cpp*
 #include "glossy.h"
+#include "memory.h"
 #include "bxdf.h"
 #include "fresnelblend.h"
 #include "blinn.h"
 #include "anisotropic.h"
+#include "texture.h"
+#include "color.h"
 #include "paramset.h"
 #include "dynload.h"
 
 using namespace lux;
 
 // Glossy Method Definitions
-BSDF *Glossy::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, const DifferentialGeometry &dgShading) const {
+BSDF *Glossy::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom,
+	const DifferentialGeometry &dgShading,
+	const Volume *exterior, const Volume *interior) const
+{
 	// Allocate _BSDF_, possibly doing bump-mapping with _bumpMap_
 	DifferentialGeometry dgs;
 	if (bumpMap)
@@ -45,11 +51,11 @@ BSDF *Glossy::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, 
 	SWCSpectrum d = Kd->Evaluate(tspack, dgs).Clamp(0.f, 1.f);
 	SWCSpectrum s = Ks->Evaluate(tspack, dgs);
 	float i = index->Evaluate(tspack, dgs);
-	if(i > 0.0) {
+	if (i > 0.f) {
 		const float ti = (i-1)/(i+1);
 		s *= ti*ti;
 	}
-	s.Clamp(0.f, 1.f);
+	s = s.Clamp(0.f, 1.f);
 
 	SWCSpectrum a = Ka->Evaluate(tspack, dgs).Clamp(0.f, 1.f);
 
@@ -57,12 +63,14 @@ BSDF *Glossy::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, 
 	float v = nv->Evaluate(tspack, dgs);
 	float ld = depth->Evaluate(tspack, dgs);
 
-	BxDF *bxdf;
-	if(u == v)
-		bxdf = BSDF_ALLOC(tspack, FresnelBlend)(d, s, a, ld, BSDF_ALLOC(tspack, Blinn)(1.f/u));
+	MicrofacetDistribution *md;
+	if (u == v)
+		md = ARENA_ALLOC(tspack->arena, Blinn)(1.f / u);
 	else
-		bxdf = BSDF_ALLOC(tspack, FresnelBlend)(d, s, a, ld, BSDF_ALLOC(tspack, Anisotropic)(1.f/u, 1.f/v));
-	SingleBSDF *bsdf = BSDF_ALLOC(tspack, SingleBSDF)(dgs, dgGeom.nn, bxdf);
+		md = ARENA_ALLOC(tspack->arena, Anisotropic)(1.f / u, 1.f / v);
+	SingleBSDF *bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dgs,
+		dgGeom.nn, ARENA_ALLOC(tspack->arena, FresnelBlend)(d, s, a, ld,
+		md));
 
 	// Add ptr to CompositingParams structure
 	bsdf->SetCompositingParams(compParams);
@@ -70,15 +78,15 @@ BSDF *Glossy::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, 
 	return bsdf;
 }
 Material* Glossy::CreateMaterial(const Transform &xform,
-		const TextureParams &mp) {
-	boost::shared_ptr<Texture<SWCSpectrum> > Kd = mp.GetSWCSpectrumTexture("Kd", RGBColor(1.f));
-	boost::shared_ptr<Texture<SWCSpectrum> > Ks = mp.GetSWCSpectrumTexture("Ks", RGBColor(1.f));
-	boost::shared_ptr<Texture<SWCSpectrum> > Ka = mp.GetSWCSpectrumTexture("Ka", RGBColor(.0f));
-	boost::shared_ptr<Texture<float> > i = mp.GetFloatTexture("index", 0.0f);
-	boost::shared_ptr<Texture<float> > d = mp.GetFloatTexture("d", .0f);
-	boost::shared_ptr<Texture<float> > uroughness = mp.GetFloatTexture("uroughness", .1f);
-	boost::shared_ptr<Texture<float> > vroughness = mp.GetFloatTexture("vroughness", .1f);
-	boost::shared_ptr<Texture<float> > bumpMap = mp.GetFloatTexture("bumpmap");
+		const ParamSet &mp) {
+	boost::shared_ptr<Texture<SWCSpectrum> > Kd(mp.GetSWCSpectrumTexture("Kd", RGBColor(1.f)));
+	boost::shared_ptr<Texture<SWCSpectrum> > Ks(mp.GetSWCSpectrumTexture("Ks", RGBColor(1.f)));
+	boost::shared_ptr<Texture<SWCSpectrum> > Ka(mp.GetSWCSpectrumTexture("Ka", RGBColor(.0f)));
+	boost::shared_ptr<Texture<float> > i(mp.GetFloatTexture("index", 0.0f));
+	boost::shared_ptr<Texture<float> > d(mp.GetFloatTexture("d", .0f));
+	boost::shared_ptr<Texture<float> > uroughness(mp.GetFloatTexture("uroughness", .1f));
+	boost::shared_ptr<Texture<float> > vroughness(mp.GetFloatTexture("vroughness", .1f));
+	boost::shared_ptr<Texture<float> > bumpMap(mp.GetFloatTexture("bumpmap"));
 
 	// Get Compositing Params
 	CompositingParams cP;
@@ -87,6 +95,6 @@ Material* Glossy::CreateMaterial(const Transform &xform,
 	return new Glossy(Kd, Ks, Ka, i, d, uroughness, vroughness, bumpMap, cP);
 }
 
-static DynamicLoader::RegisterMaterial<Glossy> r("glossy");
+static DynamicLoader::RegisterMaterial<Glossy> r("glossy_lossy");
 static DynamicLoader::RegisterMaterial<Glossy> r1("substrate"); // Backwards compatibility for 'substrate'
 static DynamicLoader::RegisterMaterial<Glossy> r2("plastic");   // Backwards compaticility for removed 'plastic'

@@ -23,13 +23,13 @@
 // lowdiscrepancy.cpp*
 #include "lowdiscrepancy.h"
 #include "error.h"
-#include "vegas.h"
-//#include "randompx.h"
-#include "lowdiscrepancypx.h"
-#include "tilepx.h"
+#include "pixelsamplers/vegas.h"
+//#include "pixelsamplers/randompx.h"
+#include "pixelsamplers/hilbertpx.h"
+#include "pixelsamplers/linear.h"
+#include "pixelsamplers/lowdiscrepancypx.h"
+#include "pixelsamplers/tilepx.h"
 #include "scene.h"
-#include "linear.h"
-#include "hilbertpx.h"
 #include "dynload.h"
 
 using namespace lux;
@@ -42,7 +42,7 @@ LDSampler* LDSampler::clone() const
 
 // LDSampler Method Definitions
 LDSampler::LDSampler(int xstart, int xend,
-		int ystart, int yend, int ps, string pixelsampler)
+		int ystart, int yend, u_int ps, string pixelsampler)
 	: Sampler(xstart, xend, ystart, yend, RoundUpPow2(ps)) {
 	xPos = xPixelStart - 1;
 	yPos = yPixelStart;
@@ -72,21 +72,20 @@ LDSampler::LDSampler(int xstart, int xend,
 		pixelSamples = ps;
 	samplePos = pixelSamples;
 	oneDSamples = twoDSamples = xDSamples = NULL;
-	imageSamples = new float[7*pixelSamples];
+	imageSamples = new float[6*pixelSamples];
 	lensSamples = imageSamples + 2*pixelSamples;
 	timeSamples = imageSamples + 4*pixelSamples;
 	wavelengthsSamples = imageSamples + 5*pixelSamples;
-	singleWavelengthSamples = imageSamples + 6*pixelSamples;
 	n1D = n2D = nxD = 0;
 }
 
 LDSampler::~LDSampler() {
 	delete[] imageSamples;
-	for (int i = 0; i < n1D; ++i)
+	for (u_int i = 0; i < n1D; ++i)
 		delete[] oneDSamples[i];
-	for (int i = 0; i < n2D; ++i)
+	for (u_int i = 0; i < n2D; ++i)
 		delete[] twoDSamples[i];
-	for (int i = 0; i < nxD; ++i)
+	for (u_int i = 0; i < nxD; ++i)
 		delete[] xDSamples[i];
 	delete[] oneDSamples;
 	delete[] twoDSamples;
@@ -142,7 +141,6 @@ bool LDSampler::GetNextSample(Sample *sample, u_int *use_pos) {
 		LDShuffleScrambled2D(tspack, 1, pixelSamples, lensSamples);
 		LDShuffleScrambled1D(tspack, 1, pixelSamples, timeSamples);
 		LDShuffleScrambled1D(tspack, 1, pixelSamples, wavelengthsSamples);
-		LDShuffleScrambled1D(tspack, 1, pixelSamples, singleWavelengthSamples);
 		for (u_int i = 0; i < sample->n1D.size(); ++i)
 			LDShuffleScrambled1D(tspack, sample->n1D[i], pixelSamples,
 				oneDSamples[i]);
@@ -175,7 +173,7 @@ bool LDSampler::GetNextSample(Sample *sample, u_int *use_pos) {
 
 	// reset so scene knows to increment
 	if (samplePos >= pixelSamples - 1)
-		*use_pos = -1;
+		*use_pos = ~0U;
 	// Copy low-discrepancy samples from tables
 	sample->imageX = xPos + imageSamples[2*samplePos];
 	sample->imageY = yPos + imageSamples[2*samplePos+1];
@@ -183,14 +181,13 @@ bool LDSampler::GetNextSample(Sample *sample, u_int *use_pos) {
 	sample->lensV = lensSamples[2*samplePos+1];
 	sample->time = timeSamples[samplePos];
 	sample->wavelengths = wavelengthsSamples[samplePos];
-	sample->singleWavelength = singleWavelengthSamples[samplePos];
 	for (u_int i = 0; i < sample->n1D.size(); ++i) {
-		int startSamp = sample->n1D[i] * samplePos;
+		u_int startSamp = sample->n1D[i] * samplePos;
 		for (u_int j = 0; j < sample->n1D[i]; ++j)
 			sample->oneD[i][j] = oneDSamples[i][startSamp+j];
 	}
 	for (u_int i = 0; i < sample->n2D.size(); ++i) {
-		int startSamp = 2 * sample->n2D[i] * samplePos;
+		u_int startSamp = 2 * sample->n2D[i] * samplePos;
 		for (u_int j = 0; j < 2*sample->n2D[i]; ++j)
 			sample->twoD[i][j] = twoDSamples[i][startSamp+j];
 	}
@@ -203,7 +200,7 @@ float *LDSampler::GetLazyValues(Sample *sample, u_int num, u_int pos)
 {
 	float *data = sample->xD[num] + pos * sample->dxD[num];
 	float *xDSamp = xDSamples[num];
-	int offset = 0;
+	u_int offset = 0;
 	for (u_int i = 0; i < sample->sxD[num].size(); ++i) {
 		if (sample->sxD[num][i] == 1) {
 			data[offset] = xDSamp[sample->nxD[num] * (samplePos - 1) + pos];
@@ -223,7 +220,7 @@ Sampler* LDSampler::CreateSampler(const ParamSet &params, const Film *film) {
 	film->GetSampleExtent(&xstart, &xend, &ystart, &yend);
 	string pixelsampler = params.FindOneString("pixelsampler", "vegas");
 	int nsamp = params.FindOneInt("pixelsamples", 4);
-	return new LDSampler(xstart, xend, ystart, yend, nsamp, pixelsampler);
+	return new LDSampler(xstart, xend, ystart, yend, max(nsamp, 0), pixelsampler);
 }
 
 static DynamicLoader::RegisterSampler<LDSampler> r("lowdiscrepancy");

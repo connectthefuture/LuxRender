@@ -25,8 +25,11 @@
 #include "scene.h"
 #include "light.h"
 #include "camera.h"
-#include "mc.h"
+#include "mcdistribution.h"
 #include "reflection/bxdf.h"
+#include "sampling.h"
+#include "film.h"
+#include "randomgen.h"
 #include "dynload.h"
 #include "paramset.h"
 
@@ -51,7 +54,7 @@ SWCSpectrum VirtualLight::GetSWCSpectrum(const TsPack* tspack) const
 }
 
 // IGIIntegrator Implementation
-IGIIntegrator::IGIIntegrator(int nl, int ns, int d, float md)
+IGIIntegrator::IGIIntegrator(u_int nl, u_int ns, u_int d, float md)
 {
 	nLightPaths = RoundUpPow2(nl);
 	nLightSets = RoundUpPow2(ns);
@@ -63,16 +66,15 @@ void IGIIntegrator::RequestSamples(Sample *sample, const Scene *scene)
 {
 	// Request samples for area light sampling
 	u_int nLights = scene->lights.size();
-	lightSampleOffset = new int[nLights];
-	bsdfSampleOffset = new int[nLights];
-	bsdfComponentOffset = new int[nLights];
+	lightSampleOffset = new u_int[nLights];
+	bsdfSampleOffset = new u_int[nLights];
+	bsdfComponentOffset = new u_int[nLights];
 	for (u_int i = 0; i < nLights; ++i) {
-		int lightSamples = 1;
+		u_int lightSamples = 1;
 		lightSampleOffset[i] = sample->Add2D(lightSamples);
 		bsdfSampleOffset[i] = sample->Add2D(lightSamples);
 		bsdfComponentOffset[i] = sample->Add1D(lightSamples);
 	}
-	lightNumOffset = -1;
 	vlSetOffset = sample->Add1D(1);
 }
 void IGIIntegrator::Preprocess(const TsPack *tspack, const Scene *scene)
@@ -93,25 +95,21 @@ void IGIIntegrator::Preprocess(const TsPack *tspack, const Scene *scene)
 	LDShuffleScrambled2D(tspack, nLightPaths, nLightSets, lightSamp0);
 	LDShuffleScrambled2D(tspack, nLightPaths, nLightSets, lightSamp1);
 	// Precompute information for light sampling densities
-	tspack->swl->Sample(.5f, .5f);
+	tspack->swl->Sample(.5f);
 	u_int nLights = scene->lights.size();
 	float *lightPower = new float[nLights];
-	float *lightCDF = new float[nLights + 1];
 	for (u_int i = 0; i < nLights; ++i)
-		lightPower[i] = scene->lights[i]->Power(tspack, scene).Y(tspack);
-	float totalPower;
-	ComputeStep1dCDF(lightPower, nLights, &totalPower, lightCDF);
+		lightPower[i] = scene->lights[i]->Power(scene);
+	Distribution1D lightCDF(lightPower, nLights);
+	delete[] lightPower;
 	for (u_int s = 0; s < nLightSets; ++s) {
 		for (u_int i = 0; i < nLightPaths; ++i) {
-			tspack->swl->Sample(tspack->rng->floatValue(), tspack->rng->floatValue());
+			tspack->swl->Sample(tspack->rng->floatValue());
 			// Follow path _i_ from light to create virtual lights
-			int sampOffset = s * nLightPaths + i;
+			u_int sampOffset = s * nLightPaths + i;
 			// Choose light source to trace path from
 			float lightPdf;
-			int lNum = Floor2Int(SampleStep1d(lightPower, lightCDF,
-				totalPower, nLights, lightNum[sampOffset],
-				&lightPdf) * nLights);
-			lNum = Clamp<int>(lNum, 0, nLights - 1);
+			u_int lNum = lightCDF.SampleDiscrete(lightNum[sampOffset], &lightPdf);
 			Light *light = scene->lights[lNum];
 			// Sample ray leaving light source
 			RayDifferential ray;
@@ -126,7 +124,7 @@ void IGIIntegrator::Preprocess(const TsPack *tspack, const Scene *scene)
 				continue;
 			alpha /= pdf * lightPdf;
 			Intersection isect;
-			int nIntersections = 0;
+			u_int nIntersections = 0;
 			while (scene->Intersect(ray, &isect) &&
 				!alpha.Black()) {
 				++nIntersections;
@@ -158,13 +156,11 @@ void IGIIntegrator::Preprocess(const TsPack *tspack, const Scene *scene)
 			}
 		}
 	}
-	delete[] lightCDF;
-	delete[] lightPower;
 	delete[] lightNum; // NOBOOK
 	delete[] lightSamp0; // NOBOOK
 	delete[] lightSamp1; // NOBOOK
 }
-int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
+u_int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 	const Sample *sample) const
 {
 	RayDifferential r;
@@ -183,7 +179,7 @@ int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 	RayDifferential ray(r);
 	SWCSpectrum L(0.f), pathThroughput(1.f);
 	float alpha = 1.f;
-	for (int depth = 0; ; ++depth) {
+	for (u_int depth = 0; ; ++depth) {
 		Intersection isect;
 		if (!scene->Intersect(r, &isect)) {
 			// Handle ray with no intersection
@@ -211,9 +207,9 @@ int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 			L += pathThroughput * Ld / scene->lights.size();
 		}
 		// Compute indirect illumination with virtual lights
-		u_int lSet = min<u_int>(Floor2Int(sample->oneD[vlSetOffset][0] * nLightSets),
-			max<u_int>(1, virtualLights.size()) - 1);
-		for (u_int i = 0; i < virtualLights[lSet].size(); ++i) {
+		size_t lSet = min<size_t>(Floor2UInt(sample->oneD[vlSetOffset][0] * nLightSets),
+			max<size_t>(1U, virtualLights.size()) - 1U);
+		for (size_t i = 0; i < virtualLights[lSet].size(); ++i) {
 			const VirtualLight &vl = virtualLights[lSet][i];
 			// Add contribution from _VirtualLight_ _vl_
 			// Ignore light if it's too close
@@ -251,10 +247,10 @@ int IGIIntegrator::Li(const TsPack *tspack, const Scene *scene,
 		r.time = ray.time;
 		pathThroughput *= f * (AbsDot(wi, n) / pdf);
 	}
-	const XYZColor color(L.ToXYZ(tspack) * rayWeight);
-	sample->AddContribution(sample->imageX, sample->imageY, color,
-		alpha, bufferId, 0);
-	return 1;
+	const XYZColor color(tspack, L);
+	sample->AddContribution(sample->imageX, sample->imageY,
+		color * rayWeight, alpha, bufferId, 0U);
+	return L.Black() ? 0 : 1;
 }
 SurfaceIntegrator* IGIIntegrator::CreateSurfaceIntegrator(const ParamSet &params)
 {
@@ -262,7 +258,7 @@ SurfaceIntegrator* IGIIntegrator::CreateSurfaceIntegrator(const ParamSet &params
 	int nLightPaths = params.FindOneInt("nlights", 64);
 	int maxDepth = params.FindOneInt("maxdepth", 5);
 	float minDist = params.FindOneFloat("mindist", .1f);
-	return new IGIIntegrator(nLightPaths, nLightSets, maxDepth, minDist);
+	return new IGIIntegrator(max(nLightPaths, 0), max(nLightSets, 0), max(maxDepth, 0), minDist);
 }
 
 static DynamicLoader::RegisterSurfaceIntegrator<IGIIntegrator> r("igi");

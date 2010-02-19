@@ -25,43 +25,40 @@
 #include "texture.h"
 #include "rgbrefl.h"
 #include "rgbillum.h"
+#include "fresneldielectric.h"
 #include "paramset.h"
 
 namespace lux
 {
 
 // ConstantTexture Declarations
-template <class T>
-class ConstantFloatTexture : public Texture<T> {
+class ConstantFloatTexture : public Texture<float> {
 public:
 	// ConstantTexture Public Methods
-	ConstantFloatTexture(const T &v) { value = v; }
+	ConstantFloatTexture(const float &v) : value(v) { }
 	virtual ~ConstantFloatTexture() { }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
+	virtual float Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
 		return value;
 	}
+	virtual float Y() const { return value; }
 private:
-	T value;
+	float value;
 };
 
-template <class T>
-class ConstantRGBColorTexture : public Texture<T> {
+class ConstantRGBColorTexture : public Texture<SWCSpectrum> {
 public:
 	// ConstantTexture Public Methods
-	ConstantRGBColorTexture(const RGBColor &s) {
-		color = s;
+	ConstantRGBColorTexture(const RGBColor &s) : color(s) {
 		RGBSPD = new RGBReflSPD(color);
 	}
 	virtual ~ConstantRGBColorTexture() { delete RGBSPD; }
-	virtual T Evaluate(const TsPack *tspack, const DifferentialGeometry &) const {
-		return SWCSpectrum(tspack, RGBSPD);
+	virtual SWCSpectrum Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
+		return SWCSpectrum(tspack, *RGBSPD);
 	}
-	virtual void SetPower(float power, float area) {
-		float Y = RGBSPD->Y();
-		if (!(Y > 0))
-			return;
-		RGBSPD->Scale(power / (area * M_PI * Y));
-	}
+	virtual float Y() const { return RGBSPD->Y(); }
+	virtual float Filter() const { return RGBSPD->Filter(); }
 	virtual void SetIlluminant() {
 		delete RGBSPD;
 		RGBSPD = new RGBIllumSPD(color);
@@ -71,11 +68,27 @@ private:
 	RGBColor color;
 };
 
+class ConstantFresnelTexture : public Texture<const Fresnel *> {
+public:
+	// ConstantTexture Public Methods
+	ConstantFresnelTexture(const float &v) : value(v, 0.f, 0.f), val(v) { }
+	virtual ~ConstantFresnelTexture() { }
+	virtual const Fresnel *Evaluate(const TsPack *tspack,
+		const DifferentialGeometry &) const {
+		return &value;
+	}
+	virtual float Y() const { return val; }
+private:
+	FresnelDielectric value;
+	float val;
+};
+
 class Constant
 {
 public:
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<float> *CreateFloatTexture(const Transform &tex2world, const ParamSet &tp);
+	static Texture<SWCSpectrum> *CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
+	static Texture<const Fresnel *> *CreateFresnelTexture(const Transform &tex2world, const ParamSet &tp);
 };
 
 }//namespace lux

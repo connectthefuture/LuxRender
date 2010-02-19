@@ -48,22 +48,16 @@ public:
 		m = o;
 		mInv = m->Inverse();
 	}
-	Transform(const boost::shared_ptr<Matrix4x4> &mat) {
-		m = mat;
-		mInv = m->Inverse();
-	}
+	Transform(const boost::shared_ptr<Matrix4x4> &mat) : m(mat),
+		mInv(mat->Inverse()) { }
 	Transform(const boost::shared_ptr<Matrix4x4> &mat,
-	          const boost::shared_ptr<Matrix4x4> &minv) {
-		m = mat;
-		mInv = minv;
-	}
+	          const boost::shared_ptr<Matrix4x4> &minv) : m(mat),
+		mInv(minv) { }
 	friend ostream &operator<<(ostream &, const Transform &);
 	Transform GetInverse() const {
 		return Transform(mInv, m);
 	}
-	boost::shared_ptr<Matrix4x4> GetMatrix() const {
-		return m;
-	}
+	boost::shared_ptr<Matrix4x4> GetMatrix() const { return m; }
 	bool HasScale() const;
 	inline Point operator()(const Point &pt) const;
 	inline void operator()(const Point &pt,Point *ptrans) const;
@@ -90,12 +84,8 @@ private:
 //#endif
 
 inline Ray Transform::operator()(const Ray &r) const {
-	Ray ret;
-	(*this)(r.o, &ret.o);
-	(*this)(r.d, &ret.d);
-	ret.mint = r.mint;
-	ret.maxt = r.maxt;
-	ret.time = r.time;
+	Ray ret((*this)(r.o), (*this)(r.d), r.mint, r.maxt, r.time);
+
 	return ret;
 }
 inline void Transform::operator()(const Ray &r,

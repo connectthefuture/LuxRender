@@ -20,11 +20,12 @@
  *   Lux Renderer website : http://www.luxrender.net                       *
  ***************************************************************************/
 
-#ifndef LUX_RGBColor_H
-#define LUX_RGBColor_H
+#ifndef LUX_SWCSPECTRUM_H
+#define LUX_SWCSPECTRUM_H
 // spectrum.h*
 #include "lux.h"
-#include "color.h"
+
+#include <boost/serialization/access.hpp>
 
 namespace lux
 {
@@ -46,7 +47,7 @@ public:
 	}
 	SWCSpectrum(const TsPack *tspack, const RGBColor &s);							// Note -radiance- - REFACT - can inline now.
 
-	SWCSpectrum(const TsPack *tspack, const SPD *s);
+	SWCSpectrum(const TsPack *tspack, const SPD &s);
 
 	SWCSpectrum(const float cs[WAVELENGTH_SAMPLES]) {
 		for (int i = 0; i < WAVELENGTH_SAMPLES; ++i)
@@ -175,7 +176,6 @@ public:
 		for (int i = 0; i < WAVELENGTH_SAMPLES; ++i)
 			fprintf(f, "%f ", c[i]);
 	}
-	XYZColor ToXYZ(const TsPack *tspack) const;
 	Scalar Y(const TsPack *tspack) const;
 	Scalar Filter(const TsPack *tspack) const;
 
@@ -199,4 +199,4 @@ private:
 
 }//namespace lux
 
-#endif // LUX_RGBColor_H
+#endif // LUX_SWCSPECTRUM_H

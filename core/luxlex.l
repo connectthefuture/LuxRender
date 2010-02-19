@@ -49,11 +49,12 @@ struct ParamArray;
 struct IncludeInfo {
 	string filename;
 	YY_BUFFER_STATE bufState;
-	int lineNum;
+	u_int lineNum;
 };
 vector<IncludeInfo> includeStack;
 
-extern int line_num;
+extern u_int lineNum;
+extern string currentFile;
 int str_pos;
 
 void add_string_char( char c )
@@ -85,14 +86,13 @@ void include_push(char *filename) {
             luxError(LUX_NOFILE,LUX_SEVERE,ss.str().c_str());
         } else {
             IncludeInfo ii;
-            extern string current_file;
-            ii.filename = current_file;
+            ii.filename = currentFile;
             ii.bufState = YY_CURRENT_BUFFER;
-            ii.lineNum = line_num;
+            ii.lineNum = lineNum;
             includeStack.push_back(ii);
 
-            current_file = filename;
-            line_num = 1;
+            currentFile = filename;
+            lineNum = 1;
 
         	yyin = newFile;
         	yy_switch_to_buffer(yy_create_buffer(yyin, YY_BUF_SIZE));
@@ -102,12 +102,10 @@ void include_push(char *filename) {
 
 void include_pop(void)
 {
-	extern int line_num;
-	extern string current_file;
 	yy_delete_buffer(YY_CURRENT_BUFFER);
 	yy_switch_to_buffer(includeStack.back().bufState);
-	current_file = includeStack.back().filename;
-	line_num = includeStack.back().lineNum;
+	currentFile = includeStack.back().filename;
+	lineNum = includeStack.back().lineNum;
 	includeStack.pop_back();
 }
 %}
@@ -129,7 +127,7 @@ Include { BEGIN(INCL); }
 }
 "#" { BEGIN COMMENT; }
 <COMMENT>. /* eat it up */
-<COMMENT>\n { line_num++; BEGIN INITIAL; }
+<COMMENT>\n { lineNum++; BEGIN INITIAL; }
 Accelerator		{ return ACCELERATOR; }
 AreaLightSource		{ return AREALIGHTSOURCE;	}
 AttributeBegin 		{ return ATTRIBUTEBEGIN; 	}
@@ -138,8 +136,10 @@ Camera			{ return CAMERA;		}
 ConcatTransform 	{ return CONCATTRANSFORM; 	}
 CoordinateSystem	{ return COORDINATESYSTEM;	}
 CoordSysTransform	{ return COORDSYSTRANSFORM;	}
+Exterior		{ return EXTERIOR;		}
 Film	 		{ return FILM;	 		}
 Identity		{ return IDENTITY;		}
+Interior		{ return INTERIOR;		}
 LightGroup		{ return LIGHTGROUP;		}
 LightSource 		{ return LIGHTSOURCE;		}
 LookAt			{ return LOOKAT;		}
@@ -170,9 +170,9 @@ WorldBegin 		{ return WORLDBEGIN; 		}
 WorldEnd 		{ return WORLDEND;		}
 {WHITESPACE} /* do nothing */
 \r /* jromang - do nothing */
-\n { line_num++; }
+\n { lineNum++; }
 {NUMBER} {
-  yylval.num = (float) atof(yytext);
+  yylval.num = static_cast<float>(atof(yytext));
   return NUM;
 }
 {IDENT} {
@@ -191,12 +191,10 @@ WorldEnd 		{ return WORLDEND;		}
 <STR>\\\" {add_string_char('\"');}
 <STR>\\\\ {add_string_char('\\');}
 <STR>\\[0-9]{3} {
-  int val = atoi(yytext+1);
-  while(val > 256)
-    val -= 256;
+  char val = static_cast<char>(atoi(yytext+1) & 0xff);
   add_string_char(val);
 }
-<STR>\\\n {line_num++;}
+<STR>\\\n {lineNum++;}
 <STR>\\. { add_string_char(yytext[1]);}
 <STR>\" {BEGIN INITIAL; return STRING;}
 <STR>. {add_string_char(yytext[0]);}

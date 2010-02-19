@@ -24,12 +24,10 @@
 #define LUX_PHOTONMAP_H
 
 #include "lux.h"
-#include "scene.h"
 #include "spectrum.h"
 #include "spectrumwavelengths.h"
 #include "kdtree.h"
 #include "bxdf.h"
-#include "primitive.h"
 #include "mc.h"
 
 namespace lux
@@ -151,9 +149,9 @@ public:
 	}
 
 	float Sample(const TsPack *tspack, Vector *wi, float u1, float u2, float u3) const {
-		u_int dn = Clamp(
-				(u_int)(std::upper_bound(dirs.begin(), dirs.end(), Direction(u3)) - dirs.begin()),
-				(u_int)(0), (u_int)(dirs.size() - 1));
+		size_t dn = Clamp<size_t>(static_cast<size_t>(
+			std::upper_bound(dirs.begin(), dirs.end(), Direction(u3)) - dirs.begin()),
+			0U, dirs.size() - 1);
 
 		Vector vx, vy;
 		CoordinateSystem(dirs[dn].dir, &vx, &vy);
@@ -293,10 +291,10 @@ public:
 			photonmap->Lookup(p, proc, maxDistSquared);
 	}
 
-	int getPhotonCount() { return photonCount; }
+	u_int getPhotonCount() { return photonCount; }
 
 protected:
-	int photonCount;
+	u_int photonCount;
 	KdTree<PhotonType, PhotonProcess> *photonmap;
 };
 
@@ -343,7 +341,7 @@ public:
 		nLookup(nl), maxDistSquared(md), nPaths(0) { }
 	virtual ~LightPhotonMap() { }
 
-	void init(int npaths, const vector<LightPhoton> &photons) {
+	void init(u_int npaths, const vector<LightPhoton> &photons) {
 		photonCount = photons.size();
 		nPaths = npaths;
 		photonmap = new KdTree<LightPhoton, NearSetPhotonProcess<LightPhoton> >(photons);
@@ -499,9 +497,9 @@ extern SWCSpectrum PhotonMapFinalGatherWithImportaceSampling(
 	const TsPack* tspack,
 	const Scene *scene,
 	const Sample *sample,
-	int sampleFinalGather1Offset,
-	int sampleFinalGather2Offset,
-	int gatherSamples,
+	u_int sampleFinalGather1Offset,
+	u_int sampleFinalGather2Offset,
+	u_int gatherSamples,
 	float cosGatherAngle,
 	PhotonMapRRStrategy rrStrategy,
 	float rrContinueProbability,
@@ -535,8 +533,8 @@ extern SWCSpectrum PhotonMapFinalGather(
 	const TsPack* tspack,
 	const Scene *scene,
 	const Sample *sample,
-	int sampleFinalGatherOffset,
-	int gatherSamples,
+	u_int sampleFinalGatherOffset,
+	u_int gatherSamples,
 	PhotonMapRRStrategy rrStrategy,
 	float rrContinueProbability,
 	const LightPhotonMap *indirectMap,

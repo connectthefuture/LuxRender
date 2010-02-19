@@ -57,9 +57,6 @@ IF (_mach_ppc)
 ENDIF (_mach_ppc)
 
 
-
-
-
 #############################################################################
 #############################################################################
 ###########################      Find BISON       ###########################
@@ -82,23 +79,26 @@ IF (NOT FLEX_EXECUTABLE)
 ENDIF (NOT FLEX_EXECUTABLE)
 
 
-#############################################################################
-#############################################################################
-###########################      Find OpenGL       ##########################
-#############################################################################
-#############################################################################
-SET(OPENGL_LIBRARY ${CMAKE_ROOT}/Modules/FindOpenGL.cmake)
-INCLUDE(${CMAKE_ROOT}/Modules/FindOpenGL.cmake)
-
-MESSAGE(STATUS "OpenGL include directory: " ${OPENGL_INCLUDE_DIR})
-
 
 #############################################################################
 #############################################################################
 ########################### BOOST LIBRARIES SETUP ###########################
 #############################################################################
 #############################################################################
-FIND_PACKAGE(Boost 1.39.0 REQUIRED COMPONENTS thread program_options filesystem serialization iostreams regex system)
+IF(APPLE)
+	FIND_PACKAGE(Boost 1.39.0 REQUIRED COMPONENTS python-xgcc40-mt-1_39)
+ELSE(APPLE)
+	FIND_PACKAGE(Boost 1.39.0 REQUIRED COMPONENTS python)
+ENDIF(APPLE)
+SET(Boost_python_FOUND ${Boost_FOUND})
+SET(Boost_python_LIBRARIES ${Boost_LIBRARIES})
+SET(Boost_FOUND)
+SET(Boost_LIBRARIES)
+if(APPLE)
+	FIND_PACKAGE(Boost 1.39.0 REQUIRED COMPONENTS system-xgcc40-mt-1_39 thread-xgcc40-mt-1_39 program_options-xgcc40-mt-1_39 filesystem-xgcc40-mt-1_39 serialization-xgcc40-mt-1_39 iostreams-xgcc40-mt-1_39 regex-xgcc40-mt-1_39)
+ELSE(APPLE)
+	FIND_PACKAGE(Boost 1.39.0 REQUIRED COMPONENTS thread program_options filesystem serialization iostreams regex system)
+ENDIF(APPLE)
 IF(Boost_FOUND)
 	MESSAGE(STATUS "Boost library directory: " ${Boost_LIBRARY_DIRS})
 	MESSAGE(STATUS "Boost include directory: " ${Boost_INCLUDE_DIRS})
@@ -197,24 +197,6 @@ ELSE(JPEG_FOUND)
 ENDIF(JPEG_FOUND)
 
 
-#############################################################################
-#############################################################################
-######################### wxWidgets LIBRARIES SETUP #########################
-#############################################################################
-#############################################################################
-# Here you can define what libraries of wxWidgets you need for your
-# application. You can figure out what libraries you need here;
-# http://www.wxwidgets.org/manuals/2.8/wx_librarieslist.html
-SET(wxWidgets_USE_LIBS base core gl aui adv )
-FIND_PACKAGE(wxWidgets)
-IF(wxWidgets_FOUND)
-    # Include wxWidgets macros
-    INCLUDE(${wxWidgets_USE_FILE})
-		MESSAGE( STATUS "wxWidgets include directory: " ${wxWidgets_INCLUDE_DIRS} )
-ELSE(wxWidgets_FOUND)
-		MESSAGE( STATUS "Warning : could not find wxWidgets - not building GUI")
-ENDIF(wxWidgets_FOUND)
-
 
 #############################################################################
 #############################################################################
@@ -226,28 +208,55 @@ FIND_PACKAGE(Threads REQUIRED)
 
 #############################################################################
 #############################################################################
-############################   QT4 LIBRARIES    #############################
-#############################################################################
-#############################################################################
-
-FIND_PACKAGE(Qt4)
-IF(Qt4_FOUND)
-	SET(QT_USE_QTOPENGL TRUE)
-	INCLUDE(${QT_USE_FILE})
-ENDIF(Qt4_FOUND)
-
-#############################################################################
-#############################################################################
 ###########################   SYSTEM LIBRARIES    ###########################
 #############################################################################
 #############################################################################
 IF(APPLE)
-	SET(SYS_LIBRARIES z )
+	SET(SYS_LIBRARIES z bz2)
 ENDIF(APPLE)
 IF(CYGWIN)
 	SET(SYS_LIBRARIES wsock32 ws2_32)
 	ADD_DEFINITIONS(-D_WIN32_WINNT=0x0551 -D__USE_W32_SOCKETS -D_GLIBCXX__PTHREADS)
 ENDIF(CYGWIN)
+
+#############################################################################
+#############################################################################
+############################    DOXYGEN          ############################
+#############################################################################
+#############################################################################
+
+FIND_PACKAGE(Doxygen)
+
+IF (DOXYGEN_FOUND)
+	MESSAGE( STATUS "Found Doxygen and generating documentation" )
+			
+	SET(DOXYGEN_TEMPLATE ${CMAKE_CURRENT_SOURCE_DIR}/doxygen/doxygen.template)
+	SET(DOXYGEN_INPUT ${CMAKE_CURRENT_BINARY_DIR}/doxygen.conf)
+	SET(DOXYGEN_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/doc)
+	SET(DOXYGEN_OUTPUT ${DOXYGEN_OUTPUT_DIR}/html/index.html)
+		
+	MESSAGE( STATUS "Doxygen output:" ${DOXYGEN_OUTPUT} )
+	
+	IF(DOXYGEN_DOT_FOUND)
+		MESSAGE( STATUS "Found dot" )
+		SET(DOXYGEN_DOT_CONF "HAVE_DOT = YES")
+	ENDIF(DOXYGEN_DOT_FOUND)
+	
+	ADD_CUSTOM_COMMAND( 
+	OUTPUT ${DOXYGEN_OUTPUT}
+	#creating custom doxygen.conf
+	COMMAND cp ${DOXYGEN_TEMPLATE} ${DOXYGEN_INPUT}
+	COMMAND echo "INPUT = " ${CMAKE_CURRENT_SOURCE_DIR} >> ${DOXYGEN_INPUT}
+	COMMAND echo "OUTPUT_DIRECTORY = " ${DOXYGEN_OUTPUT_DIR} >> ${DOXYGEN_INPUT}
+	COMMAND echo ${DOXYGEN_DOT_CONF} >> ${DOXYGEN_INPUT}
+	#launch doxygen
+	COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_INPUT}
+	DEPENDS ${DOXYGEN_TEMPLATE}
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+	)
+		
+	ADD_CUSTOM_TARGET(apidoc ALL DEPENDS ${DOXYGEN_OUTPUT})
+ENDIF (DOXYGEN_FOUND)
 
 
 #############################################################################
@@ -264,7 +273,7 @@ ADD_DEFINITIONS(-DLUX_USE_CONFIG_H)
 #############################################################################
 #############################################################################
 # Dade - default compiler options
-ADD_DEFINITIONS(-O3 -msse2 -mfpmath=sse -ftree-vectorize -funroll-loops -Wall -DLUX_USE_OPENGL -DHAVE_PTHREAD_H)
+ADD_DEFINITIONS(-O3 -msse2 -mfpmath=sse -ftree-vectorize -funroll-loops -Wall -fPIC -DLUX_USE_OPENGL -DHAVE_PTHREAD_H)
 
 
 #############################################################################
@@ -275,7 +284,7 @@ ADD_DEFINITIONS(-O3 -msse2 -mfpmath=sse -ftree-vectorize -funroll-loops -Wall -D
 #ADD_DEFINITIONS(-fPIC)
 
 # Jens - default Mac compiler options with OpenGL
-#ADD_DEFINITIONS(-O3 -ftree-vectorize -msse -msse2 -msse3 -mssse3 -fvariable-expansion-in-unroller -Wall -DLUX_USE_OPENGL -DHAVE_PTHREAD_H )
+#ADD_DEFINITIONS(-O3 -ftree-vectorize -msse -msse2 -msse3 -mssse3 -fvariable-expansion-in-unroller -fpic -Wall -DLUX_USE_OPENGL -DHAVE_PTHREAD_H )
 # Jens - testing Mac compiler options (debug)
 #ADD_DEFINITIONS(-DHAVE_PTHREAD_H)
 
@@ -369,6 +378,18 @@ IF(APPLE)
 	COMMAND cp LuxRender.icns LuxRender.app/Contents/Resources
 	COMMAND echo APPLnone > LuxRender.app/Contents/PkgInfo
 	COMMAND cp luxrender LuxRender.app/Contents/MacOS/LuxRender)
+	ADD_CUSTOM_TARGET(dist DEPENDS luxrenderqt)
+	ADD_CUSTOM_COMMAND(
+	TARGET dist POST_BUILD
+	COMMAND rm -rf luxrenderqt.app 
+	COMMAND mkdir luxrenderqt.app 
+	COMMAND mkdir luxrenderqt.app/Contents 
+	COMMAND mkdir luxrenderqt.app/Contents/MacOS 
+	COMMAND mkdir luxrenderqt.app/Contents/Resources
+	COMMAND cp ../macos/Info.plist luxrenderqt.app/Contents
+	COMMAND cp luxrender.icns luxrenderqt.app/Contents/Resources
+	COMMAND echo APPLnone > luxrenderqt.app/Contents/PkgInfo
+	COMMAND cp luxrenderqt luxrenderqt.app/Contents/MacOS/luxrenderqt)
 ENDIF(APPLE)
 
 
@@ -382,6 +403,7 @@ SET(lux_core_reflection_src
 	core/reflection/bxdf.cpp
 	core/reflection/fresnel.cpp
 	core/reflection/microfacetdistribution.cpp
+	core/reflection/bxdf/brdftobtdf.cpp
 	core/reflection/bxdf/cooktorrance.cpp
 	core/reflection/bxdf/fresnelblend.cpp
 	core/reflection/bxdf/lafortune.cpp
@@ -389,6 +411,7 @@ SET(lux_core_reflection_src
 	core/reflection/bxdf/microfacet.cpp
 	core/reflection/bxdf/nulltransmission.cpp
 	core/reflection/bxdf/orennayar.cpp
+	core/reflection/bxdf/schlickbrdf.cpp
 	core/reflection/bxdf/specularreflection.cpp
 	core/reflection/bxdf/speculartransmission.cpp
 	core/reflection/fresnel/fresnelnoop.cpp
@@ -410,7 +433,7 @@ SET(lux_core_src
 	core/context.cpp
 	core/contribution.cpp
 	core/dynload.cpp
-    core/epsilon.cpp
+	core/epsilon.cpp
 	core/exrio.cpp
 	core/film.cpp
 	core/geometry/bbox.cpp
@@ -426,18 +449,21 @@ SET(lux_core_src
 	core/motionsystem.cpp
 	core/osfunc.cpp
 	core/paramset.cpp
-	core/parser.cpp
 	core/photonmap.cpp
 	core/pngio.cpp
 	core/primitive.cpp
+	core/queryable/queryable.cpp
+	core/queryable/queryableattribute.cpp
+	core/queryable/queryableregistry.cpp
 	${lux_core_reflection_src}
 	core/renderfarm.cpp
+	core/renderinghints.cpp
 	core/sampling.cpp
 	core/scene.cpp
 	core/shape.cpp
 	core/spd.cpp
 	core/spectrum.cpp
-        core/spectrumwavelengths.cpp
+	core/spectrumwavelengths.cpp
 	core/texture.cpp
 	core/tgaio.cpp
 	core/timer.cpp
@@ -485,7 +511,7 @@ SET(lux_lights_src
 	lights/distant.cpp
 	lights/infinite.cpp
 	lights/infinitesample.cpp
-	lights/point.cpp
+	lights/pointlight.cpp
 	lights/projection.cpp
 	lights/sphericalfunction/photometricdata_ies.cpp
 	lights/sphericalfunction/sphericalfunction.cpp
@@ -497,7 +523,9 @@ SET(lux_lights_src
 SET(lux_materials_src
 	materials/carpaint.cpp
 	materials/glass.cpp
+	materials/glass2.cpp
 	materials/glossy.cpp
+	materials/glossy2.cpp
 	materials/matte.cpp
 	materials/mattetranslucent.cpp
 	materials/metal.cpp
@@ -550,6 +578,7 @@ SET(lux_spds_src
 	spds/rgbrefl.cpp
 	)
 SET(lux_blender_textures_src
+	textures/blender_base.cpp
 	textures/blender_blend.cpp
 	textures/blender_clouds.cpp
 	textures/blender_distortednoise.cpp
@@ -573,9 +602,14 @@ SET(lux_uniform_textures_src
 	textures/lampspectrum.cpp
 	textures/regulardata.cpp
 	)
+SET(lux_fresnel_textures_src
+	textures/cauchytexture.cpp
+	textures/sopratexture.cpp
+	)
 SET(lux_textures_src
 	${lux_uniform_textures_src}
 	${lux_blender_textures_src}
+	${lux_fresnel_textures_src}
 	textures/bilerp.cpp
 	textures/brick.cpp
 	textures/checkerboard.cpp
@@ -599,6 +633,7 @@ SET(lux_tonemaps_src
 	tonemaps/reinhard.cpp
 	)
 SET(lux_volumes_src
+	volumes/clearvolume.cpp
 	volumes/cloud.cpp
 	volumes/exponential.cpp
 	volumes/homogeneous.cpp
@@ -622,36 +657,53 @@ SET(lux_lib_src
 	${lux_tonemaps_src}
 	${lux_volumes_src}
 	)
-INCLUDE_DIRECTORIES(SYSTEM ${OPENGL_INCLUDE_DIR}
+INCLUDE_DIRECTORIES(SYSTEM
+	${Boost_INCLUDE_DIRS}
+	${CMAKE_SOURCE_DIR}/core/external
 	${JPEG_INCLUDE_DIR}
 	${TIFF_INCLUDE_DIR}
 	${PNG_INCLUDE_DIR}
 	${OPENEXR_INCLUDE_DIRS}
-	${Boost_INCLUDE_DIRS}
-	${CMAKE_SOURCE_DIR}/core/external
 	)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/core
+	${CMAKE_SOURCE_DIR}/core/queryable
 	${CMAKE_SOURCE_DIR}/core/reflection
 	${CMAKE_SOURCE_DIR}/core/reflection/bxdf
 	${CMAKE_SOURCE_DIR}/core/reflection/fresnel
 	${CMAKE_SOURCE_DIR}/core/reflection/microfacetdistribution
 	${CMAKE_SOURCE_DIR}/spds
-	${CMAKE_SOURCE_DIR}/accelerators
-	${CMAKE_SOURCE_DIR}/cameras
-	${CMAKE_SOURCE_DIR}/film
-	${CMAKE_SOURCE_DIR}/filters
-	${CMAKE_SOURCE_DIR}/integrators
-	${CMAKE_SOURCE_DIR}/lights
 	${CMAKE_SOURCE_DIR}/lights/sphericalfunction
-	${CMAKE_SOURCE_DIR}/materials
-	${CMAKE_SOURCE_DIR}/pixelsamplers
-	${CMAKE_SOURCE_DIR}/samplers
-	${CMAKE_SOURCE_DIR}/shapes
-	${CMAKE_SOURCE_DIR}/textures
-	${CMAKE_SOURCE_DIR}/tonemaps
-	${CMAKE_SOURCE_DIR}/volumes
+	${CMAKE_SOURCE_DIR}
 	${CMAKE_BINARY_DIR}
 	)
+
+SET( LUXQTGUI_SRCS
+    qtgui/main.cpp
+    qtgui/histogramview.cpp
+    qtgui/mainwindow.cpp
+    qtgui/renderview.cpp
+    qtgui/luxapp.cpp
+    qtgui/aboutdialog.cpp
+    qtgui/lightgroupwidget.cpp
+    )
+SET( LUXQTGUI_MOC
+    qtgui/histogramview.hxx
+    qtgui/mainwindow.hxx
+    qtgui/aboutdialog.hxx
+    qtgui/luxapp.hxx
+    qtgui/renderview.hxx
+    qtgui/lightgroupwidget.hxx
+    )
+SET(LUXQTGUI_UIS
+    qtgui/luxrender.ui
+    qtgui/aboutdialog.ui
+    qtgui/lightgroup.ui
+    )
+SET( LUXQTGUI_RCS
+    qtgui/icons.qrc
+    qtgui/splash.qrc
+    qtgui/images.qrc
+    )
 
 #############################################################################
 #############################################################################
@@ -659,7 +711,7 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/core
 #############################################################################
 #############################################################################
 
-LINK_DIRECTORIES(${LINK_DIRECTORIES} ${Boost_LIBRARY_DIRS} ${OPENEXR_LIB_DIRS} ${PNG_LIBRARY} ${TIFF_LIBRARY} ${JPEG_LIBRARY})
+LINK_DIRECTORIES(${LINK_DIRECTORIES} ${Boost_LIBRARY_DIRS} ${OPENEXR_LIB_DIRS} ${PNG_LIBRARY} ${TIFF_LIBRARY} ${JPEG_LIBRARY} )
 
 #Here we build the core library
 ADD_LIBRARY(lux STATIC ${lux_lib_src} )
@@ -684,21 +736,46 @@ IF(APPLE)
 	SET(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
 	# Bundle version is the version the OS looks at.
 	SET(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
-	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.luxrender.luxrender" )
-	SET(MACOSX_BUNDLE_BUNDLE_NAME "luxrender" )
+	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.LuxRender.LuxRender" )
+	SET(MACOSX_BUNDLE_BUNDLE_NAME "LuxRender" )
 	SET(MACOSX_BUNDLE_ICON_FILE "LuxRender.icns")
 	# SET(MACOSX_BUNDLE_COPYRIGHT "")
 	# SET(MACOSX_BUNDLE_INFO_STRING "Info string, localized?")
 ENDIF(APPLE)
 
 #############################################################################
-#Here we build the luxmerger executable
+#Here we build the LuxMerger executable
 #############################################################################
 ADD_EXECUTABLE(luxmerger tools/luxmerger.cpp)
 IF(APPLE)
 	TARGET_LINK_LIBRARIES(luxmerger -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${CMAKE_THREAD_LIBS_INIT} ${OPENEXR_LIBRARIES} z ${Boost_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES})
 ELSE(APPLE)
 	TARGET_LINK_LIBRARIES(luxmerger -Wl,--whole-archive lux -Wl,--no-whole-archive ${CMAKE_THREAD_LIBS_INIT} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${SYS_LIBRARIES})
+ENDIF(APPLE)
+
+IF(APPLE)
+	SET(GUI_TYPE MACOSX_BUNDLE)
+	# SET(MACOSX_BUNDLE_LONG_VERSION_STRING "${OPENSCENEGRAPH_MAJOR_VERSION}.${OPENSCENEGRAPH_MINOR_VERSION}.${OPENSCENEGRAPH_PATCH_VERSION}")
+	# Short Version is the "marketing version". It is the version
+	# the user sees in an information panel.
+	SET(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
+	# Bundle version is the version the OS looks at.
+	SET(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
+	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.LuxRender.LuxRender" )
+	SET(MACOSX_BUNDLE_BUNDLE_NAME "LuxRender" )
+	SET(MACOSX_BUNDLE_ICON_FILE "LuxRender.icns")
+	# SET(MACOSX_BUNDLE_COPYRIGHT "")
+	# SET(MACOSX_BUNDLE_INFO_STRING "Info string, localized?")
+ENDIF(APPLE)
+
+#############################################################################
+#Here we build the LuxComp executable
+#############################################################################
+ADD_EXECUTABLE(luxcomp tools/luxcomp.cpp)
+IF(APPLE)
+	TARGET_LINK_LIBRARIES(luxcomp -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${CMAKE_THREAD_LIBS_INIT} ${OPENEXR_LIBRARIES} z ${Boost_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES})
+ELSE(APPLE)
+	TARGET_LINK_LIBRARIES(luxcomp -Wl,--whole-archive lux -Wl,--no-whole-archive ${CMAKE_THREAD_LIBS_INIT} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${SYS_LIBRARIES})
 ENDIF(APPLE)
 
 IF(APPLE)
@@ -717,16 +794,80 @@ IF(APPLE)
 ENDIF(APPLE)
 
 #############################################################################
+#Here we build the python module
+#############################################################################
+
+#############################################################################
+#############################################################################
+###########################   PYTHON LIBRARIES    ###########################
+#############################################################################
+#############################################################################
+FIND_PACKAGE(PythonLibs)
+IF(PYTHONLIBS_FOUND)
+	MESSAGE(STATUS "Python library directory: " ${PYTHON_LIBRARIES} )
+	MESSAGE(STATUS "Python include directory: " ${PYTHON_INCLUDE_PATH} )
+
+	INCLUDE_DIRECTORIES(SYSTEM ${PYTHON_INCLUDE_PATH})
+	IF(APPLE)
+		ADD_LIBRARY(pylux MODULE python/binding.cpp)
+		TARGET_LINK_LIBRARIES(pylux -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${CMAKE_THREAD_LIBS_INIT} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} z bz2 ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${SYS_LIBRARIES} ${PYTHON_LIBRARIES} ${Boost_python_LIBRARIES})
+#		ADD_CUSTOM_COMMAND(
+#			TARGET pylux POST_BUILD
+#			COMMAND mv libpylux.so pylux.so
+#		)
+	ELSE(APPLE)
+		ADD_LIBRARY(pylux SHARED python/binding.cpp)
+		TARGET_LINK_LIBRARIES(pylux -Wl,--whole-archive lux -Wl,--no-whole-archive ${CMAKE_THREAD_LIBS_INIT} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${SYS_LIBRARIES} ${PYTHON_LIBRARIES} ${Boost_python_LIBRARIES})
+		ADD_CUSTOM_COMMAND(
+			TARGET pylux POST_BUILD
+			COMMAND mv libpylux.so pylux.so
+			)
+	ENDIF(APPLE)
+ELSE(PYTHONLIBS_FOUND)
+	MESSAGE( STATUS "Warning : could not find Python libraries - not building python module")
+ENDIF(PYTHONLIBS_FOUND)
+
+
+#############################################################################
 #Here we build the wxWidgets GUI executable
 #############################################################################
+
+#############################################################################
+#############################################################################
+###########################      Find OpenGL       ##########################
+#############################################################################
+#############################################################################
+SET(OPENGL_LIBRARY ${CMAKE_ROOT}/Modules/FindOpenGL.cmake)
+INCLUDE(${CMAKE_ROOT}/Modules/FindOpenGL.cmake)
+
+MESSAGE(STATUS "OpenGL include directory: " ${OPENGL_INCLUDE_DIR})
+
+INCLUDE_DIRECTORIES(SYSTEM ${OPENGL_INCLUDE_DIR})
+
+#############################################################################
+#############################################################################
+######################### wxWidgets LIBRARIES SETUP #########################
+#############################################################################
+#############################################################################
+# Here you can define what libraries of wxWidgets you need for your
+# application. You can figure out what libraries you need here;
+# http://www.wxwidgets.org/manuals/2.8/wx_librarieslist.html
+SET(wxWidgets_USE_LIBS base core gl aui adv )
+FIND_PACKAGE(wxWidgets)
+
 IF(wxWidgets_FOUND)
+	# Include wxWidgets macros
+	INCLUDE(${wxWidgets_USE_FILE})
+	MESSAGE( STATUS "wxWidgets include directory: " ${wxWidgets_INCLUDE_DIRS} )
+
 	ADD_EXECUTABLE(luxrender ${GUI_TYPE} renderer/wxluxapp.cpp renderer/wxluxgui.cpp renderer/wxluxframe.cpp renderer/wxglviewer.cpp renderer/wxviewer.cpp)
-	INCLUDE_DIRECTORIES( ${wxWidgets_INCLUDE_DIRS} )
+	INCLUDE_DIRECTORIES(SYSTEM ${wxWidgets_INCLUDE_DIRS} )
 
 	IF(APPLE)
-		INCLUDE_DIRECTORIES ( /Developer/Headers/FlatCarbon /usr/local/include)
+		INCLUDE_DIRECTORIES (SYSTEM /Developer/Headers/FlatCarbon /usr/local/include)
 		FIND_LIBRARY(CARBON_LIBRARY Carbon)
 		FIND_LIBRARY(QUICKTIME_LIBRARY QuickTime )
+		FIND_LIBRARY(PYTHON_LIBRARY Python )
 		FIND_LIBRARY(OPENGL_LIBRARY OpenGL )
 		FIND_LIBRARY(AGL_LIBRARY AGL )
 		FIND_LIBRARY(APP_SERVICES_LIBRARY ApplicationServices )
@@ -734,20 +875,75 @@ IF(wxWidgets_FOUND)
 		MESSAGE(STATUS ${CARBON_LIBRARY})
 		MARK_AS_ADVANCED (CARBON_LIBRARY)
 		MARK_AS_ADVANCED (QUICKTIME_LIBRARY)
+		MARK_AS_ADVANCED (PYTHON_LIBRARY)
 		MARK_AS_ADVANCED (OPENGL_LIBRARY)
 		MARK_AS_ADVANCED (AGL_LIBRARY)
 		MARK_AS_ADVANCED (APP_SERVICES_LIBRARY)
 		SET(EXTRA_LIBS ${CARBON_LIBRARY} ${QUICKTIME_LIBRARY} ${OPENGL_LIBRARY} ${AGL_LIBRARY} ${APP_SERVICES_LIBRARY})
-		TARGET_LINK_LIBRARIES(luxrender -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${wxWidgets_LIBRARIES} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} z ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES})
+		TARGET_LINK_LIBRARIES(luxrender -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${wxWidgets_LIBRARIES} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} z ${BZ2_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES})
 	ELSE(APPLE)
 		TARGET_LINK_LIBRARIES(luxrender -Wl,--whole-archive lux -Wl,--no-whole-archive ${wxWidgets_LIBRARIES} ${OPENGL_LIBRARY} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${SYS_LIBRARIES})
 	ENDIF(APPLE)
+ELSE(wxWidgets_FOUND)
+	MESSAGE( STATUS "Warning : could not find wxWidgets - not building GUI")
 ENDIF(wxWidgets_FOUND)
+
+#############################################################################
+#Here we build the QT4 GUI executable
+#############################################################################
+
+#############################################################################
+#############################################################################
+############################   QT4 LIBRARIES    #############################
+#############################################################################
+#############################################################################
+
+FIND_PACKAGE(Qt4)
+IF(QT4_FOUND)
+	MESSAGE(STATUS "Qt library directory: " ${QT_LIBRARY_DIR} )
+	MESSAGE( STATUS "Qt include directory: " ${QT_INCLUDE_DIR} )
+	SET(QT_USE_QTOPENGL TRUE)
+	INCLUDE(${QT_USE_FILE})
+
+	QT4_ADD_RESOURCES( LUXQTGUI_RC_SRCS ${LUXQTGUI_RCS}) 
+	QT4_WRAP_UI( LUXQTGUI_UI_HDRS ${LUXQTGUI_UIS} )
+	QT4_WRAP_CPP( LUXQTGUI_MOC_SRCS ${LUXQTGUI_MOC} )
+
+	file (GLOB TRANSLATIONS_FILES qtgui/translations/*.ts)
+	qt4_create_translation(QM_FILES ${FILES_TO_TRANSLATE} ${TRANSLATIONS_FILES})
+
+	ADD_EXECUTABLE(luxrenderqt ${GUI_TYPE} ${LUXQTGUI_SRCS} ${LUXQTGUI_MOC_SRCS} ${LUXQTGUI_RC_SRCS} ${LUXQTGUI_UI_HDRS} ${QM_FILES})
+	IF(APPLE)
+		INCLUDE_DIRECTORIES (SYSTEM /Developer/Headers/FlatCarbon /usr/local/include)
+		FIND_LIBRARY(CARBON_LIBRARY Carbon)
+		FIND_LIBRARY(QUICKTIME_LIBRARY QuickTime )
+		FIND_LIBRARY(PYTHON_LIBRARY Python )
+		FIND_LIBRARY(QT_LIBRARY QTCore QTGui QTOpenGL)
+		FIND_LIBRARY(OPENGL_LIBRARY OpenGL )
+		FIND_LIBRARY(AGL_LIBRARY AGL )
+		FIND_LIBRARY(APP_SERVICES_LIBRARY ApplicationServices )
+
+		MESSAGE(STATUS ${CARBON_LIBRARY})
+		MARK_AS_ADVANCED (CARBON_LIBRARY)
+		MARK_AS_ADVANCED (QUICKTIME_LIBRARY)
+		MARK_AS_ADVANCED (PYTHON_LIBRARY)
+		MARK_AS_ADVANCED (QT_LIBRARY)
+		MARK_AS_ADVANCED (OPENGL_LIBRARY)
+		MARK_AS_ADVANCED (AGL_LIBRARY)
+		MARK_AS_ADVANCED (APP_SERVICES_LIBRARY)
+		SET(EXTRA_LIBS ${CARBON_LIBRARY}  ${QUICKTIME_LIBRARY} ${QT_LIBRARY} ${OPENGL_LIBRARY} ${AGL_LIBRARY} ${APP_SERVICES_LIBRARY})
+		TARGET_LINK_LIBRARIES(luxrenderqt -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${QT_LIBRARIES} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} z ${BZ2_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES})
+	ELSE(APPLE)
+	TARGET_LINK_LIBRARIES(luxrenderqt -Wl,--whole-archive lux -Wl,--no-whole-archive ${QT_LIBRARIES} ${OPENEXR_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} ${ZLIB_LIBRARIES} ${BZ2_LIBRARIES} ${PNG_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${SYS_LIBRARIES}  ${OPENGL_LIBRARY})
+	ENDIF(APPLE)
+ELSE(QT4_FOUND)
+	MESSAGE( STATUS "Warning : could not find Qt - not building Qt GUI")
+ENDIF(QT4_FOUND)
 
 #############################################################################
 
 #Install target
-INSTALL(TARGETS luxrender luxconsole luxmerger
+INSTALL(TARGETS luxrender luxrenderqt luxconsole luxmerger
         RUNTIME DESTINATION bin
 )
 

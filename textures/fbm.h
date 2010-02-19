@@ -22,7 +22,9 @@
 
 // fbm.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
+#include "equalspd.h"
 #include "paramset.h"
 
 // TODO - radiance - add methods for Power and Illuminant propagation
@@ -47,9 +49,11 @@ public:
 		Point P = mapping->Map(dg, &dpdx, &dpdy);
 		return FBm(P, dpdx, dpdy, omega, octaves);
 	}
+	virtual float Y() const { return EqualSPD(.5f).Y(); }
+	virtual float Filter() const { return .5f; }
 	
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const ParamSet &tp);
+	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 	
 private:
 	// FBmTexture Private Data
@@ -60,27 +64,27 @@ private:
 
 // FBmTexture Method Definitions
 template <class T> Texture<float> * FBmTexture<T>::CreateFloatTexture(const Transform &tex2world,
-		const TextureParams &tp) {
+	const ParamSet &tp) {
 	// Initialize 3D texture mapping _map_ from _tp_
 	TextureMapping3D *map = new IdentityMapping3D(tex2world);
 	// Apply texture specified transformation option for 3D mapping
 	IdentityMapping3D *imap = (IdentityMapping3D*) map;
 	imap->Apply3DTextureMappingOptions(tp);
 
-	return new FBmTexture<float>(tp.FindInt("octaves", 8),
-		tp.FindFloat("roughness", .5f), map);
+	return new FBmTexture<float>(tp.FindOneInt("octaves", 8),
+		tp.FindOneFloat("roughness", .5f), map);
 }
 
 template <class T> Texture<SWCSpectrum> * FBmTexture<T>::CreateSWCSpectrumTexture(const Transform &tex2world,
-		const TextureParams &tp) {
+	const ParamSet &tp) {
 	// Initialize 3D texture mapping _map_ from _tp_
 	TextureMapping3D *map = new IdentityMapping3D(tex2world);
 	// Apply texture specified transformation option for 3D mapping
 	IdentityMapping3D *imap = (IdentityMapping3D*) map;
 	imap->Apply3DTextureMappingOptions(tp);
 
-	return new FBmTexture<SWCSpectrum>(tp.FindInt("octaves", 8),
-		tp.FindFloat("roughness", .5f), map);
+	return new FBmTexture<SWCSpectrum>(tp.FindOneInt("octaves", 8),
+		tp.FindOneFloat("roughness", .5f), map);
 }
 
 }//namespace lux

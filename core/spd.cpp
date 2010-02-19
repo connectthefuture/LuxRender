@@ -23,13 +23,12 @@
 // spd.cpp*
 #include "lux.h"
 #include "spd.h"
-#include "color.h"
 #include "memory.h"
 #include "data/xyzbasis.h"
 
 using namespace lux;
 
-void SPD::AllocateSamples(int n) {
+void SPD::AllocateSamples(u_int n) {
 	 // Allocate memory for samples
 	samples = AllocAligned<float>(n);
 }
@@ -43,25 +42,25 @@ void SPD::FreeSamples() {
 void SPD::Normalize() {
 	float max = 0.f;
 
-	for(int i=0; i<nSamples; i++)
+	for (u_int i = 0; i < nSamples; ++i)
 		if(samples[i] > max)
 			max = samples[i];
 
-	float scale = 1.f/max;
+	const float scale = 1.f / max;
 
-	for(int i=0; i<nSamples; i++)
+	for (u_int i = 0; i < nSamples; ++i)
 		samples[i] *= scale;
 }
 
 void SPD::Clamp() {
-	for(int i=0; i<nSamples; i++) {
-		if(samples[i] < 0.f) samples[i] = 0.f;
-		if(samples[i] > INFINITY) samples[i] = INFINITY;
+	for (u_int i = 0; i < nSamples; ++i) {
+		if (!(samples[i] > 0.f))
+			samples[i] = 0.f;
 	}
 }
 
 void SPD::Scale(float s) {
-	for(int i=0; i<nSamples; i++)
+	for (u_int i = 0; i < nSamples; ++i)
 		samples[i] *= s;
 }
 
@@ -69,44 +68,36 @@ void SPD::Whitepoint(float temp) {
 	vector<float> bbvals;
 
 	// Fill bbvals with BB curve
-	for(int i=0; i<nSamples; i++) {
-		float w = 1e-9f * (lambdaMin + (delta*i));
+	float w = lambdaMin * 1e-9f;
+	for (u_int i = 0; i < nSamples; ++i) {
 		// Compute blackbody power for wavelength w and temperature temp
 		bbvals.push_back(4e-9f * (3.74183e-16f * powf(w, -5.f))
 				/ (expf(1.4388e-2f / (w * temp)) - 1.f));
+		w += 1e-9f * delta;
 	}
 
 	// Normalize
 	float max = 0.f;
-	for(int i=0; i<nSamples; i++)
-		if(bbvals[i] > max)
+	for (u_int i = 0; i < nSamples; ++i)
+		if (bbvals[i] > max)
 			max = bbvals[i];
-	float scale = 1.f/max;
-	for(int i=0; i<nSamples; i++)
-		bbvals[i] *= scale;
-
+	const float scale = 1.f / max;
 	// Multiply
-	for(int i=0; i<nSamples; i++)
-		samples[i] *= bbvals[i];
-
-	bbvals.clear();
+	for (u_int i = 0; i < nSamples; ++i)
+		samples[i] *= bbvals[i] * scale;
 }
 
 float SPD::Y() const
 {
 	float y = 0.f;
-	for (int i = 0; i < nCIE; ++i)
+	for (u_int i = 0; i < nCIE; ++i)
 		y += sample(i + CIEstart) * CIE_Y[i];
 	return y * 683.f;
 }
-XYZColor SPD::ToXYZ() const
+float SPD::Filter() const
 {
-	XYZColor c(0.f);
-	for (int i = 0; i < nCIE; ++i) {
-		float s = sample(i + CIEstart);
-		c.c[0] += s * CIE_X[i];
-		c.c[1] += s * CIE_Y[i];
-		c.c[2] += s * CIE_Z[i];
-	}
-	return c * 683.f;
+	float y = 0.f;
+	for (u_int i = 0; i < nSamples; ++i)
+		y += samples[i];
+	return y / nSamples;
 }

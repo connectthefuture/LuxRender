@@ -38,23 +38,28 @@ boost::shared_ptr<Shape> MakeShape(const string &name,
 	const Transform &object2world, bool reverseOrientation,
 	const ParamSet &paramSet);
 boost::shared_ptr<Material> MakeMaterial(const string &name,
-	const Transform &mtl2world, const TextureParams &mp);
+	const Transform &mtl2world, const ParamSet &mp);
 boost::shared_ptr<Texture<float> > MakeFloatTexture(const string &name,
-	const Transform &tex2world, const TextureParams &tp);
+	const Transform &tex2world, const ParamSet &tp);
 boost::shared_ptr<Texture<SWCSpectrum> > MakeSWCSpectrumTexture(const string &name,
-	const Transform &tex2world, const TextureParams &tp);
+	const Transform &tex2world, const ParamSet &tp);
+boost::shared_ptr<Texture<const Fresnel *> > MakeFresnelTexture(const string &name,
+	const Transform &tex2world, const ParamSet &tp);
 Light *MakeLight(const string &name, const Transform &light2world,
-	const ParamSet &paramSet, const TextureParams &tp);
+	const ParamSet &paramSet);
 AreaLight *MakeAreaLight(const string &name,
-	const Transform &light2world, const ParamSet &paramSet, const TextureParams &tp,
+	const Transform &light2world, const ParamSet &paramSet,
 	const boost::shared_ptr<Primitive> &prim);
-VolumeRegion *MakeVolumeRegion(const string &name,
+Region *MakeVolumeRegion(const string &name,
+	const Transform &light2world, const ParamSet &paramSet);
+Volume *MakeVolume(const string &name,
 	const Transform &light2world, const ParamSet &paramSet);
 SurfaceIntegrator *MakeSurfaceIntegrator(const string &name,
 	const ParamSet &paramSet);
 VolumeIntegrator *MakeVolumeIntegrator(const string &name,
 	const ParamSet &paramSet);
-boost::shared_ptr<Aggregate> MakeAccelerator(const string &name, const vector<boost::shared_ptr<Primitive> > &prims,
+boost::shared_ptr<Aggregate> MakeAccelerator(const string &name,
+	const vector<boost::shared_ptr<Primitive> > &prims,
 	const ParamSet &paramSet);
 Camera *MakeCamera(const string &name, const Transform &world2cam,
 	const Transform &world2camEnd, const ParamSet &paramSet, Film *film);
@@ -86,7 +91,7 @@ public:
 	};
 
 	typedef Material *(*CreateMaterial)(const Transform&,
-		const TextureParams&);
+		const ParamSet&);
 	static map<string, CreateMaterial> &registeredMaterials();
 	template <class T> class RegisterMaterial : public RegisterLoader<CreateMaterial> {
 	public:
@@ -96,7 +101,7 @@ public:
 	};
 
 	typedef Texture<float> *(*CreateFloatTexture)(const Transform&,
-		const TextureParams&);
+		const ParamSet&);
 	static map<string, CreateFloatTexture> &registeredFloatTextures();
 	template <class T> class RegisterFloatTexture : public RegisterLoader<CreateFloatTexture> {
 	public:
@@ -106,7 +111,7 @@ public:
 	};
 
 	typedef Texture<SWCSpectrum> *(*CreateSWCSpectrumTexture)(const Transform&,
-		const TextureParams&);
+		const ParamSet&);
 	static map<string, CreateSWCSpectrumTexture> &registeredSWCSpectrumTextures();
 	template <class T> class RegisterSWCSpectrumTexture : public RegisterLoader<CreateSWCSpectrumTexture> {
 	public:
@@ -115,7 +120,17 @@ public:
 		virtual ~RegisterSWCSpectrumTexture<T>() {}
 	};
 
-	typedef Light *(*CreateLight)(const Transform&, const ParamSet&, const TextureParams &tp);
+	typedef Texture<const Fresnel *> *(*CreateFresnelTexture)(const Transform&,
+		const ParamSet&);
+	static map<string, CreateFresnelTexture> &registeredFresnelTextures();
+	template <class T> class RegisterFresnelTexture : public RegisterLoader<CreateFresnelTexture> {
+	public:
+		RegisterFresnelTexture<T>(const string &name) :
+			RegisterLoader<CreateFresnelTexture>(registeredFresnelTextures(), name, &T::CreateFresnelTexture) {}
+		virtual ~RegisterFresnelTexture<T>() {}
+	};
+
+	typedef Light *(*CreateLight)(const Transform&, const ParamSet&);
 	static map<string, CreateLight> &registeredLights();
 	template <class T> class RegisterLight : public RegisterLoader<CreateLight> {
 	public:
@@ -124,7 +139,7 @@ public:
 		virtual ~RegisterLight<T>() {}
 	};
 
-	typedef AreaLight *(*CreateAreaLight)(const Transform&, const ParamSet&, const TextureParams&,
+	typedef AreaLight *(*CreateAreaLight)(const Transform&, const ParamSet&,
 		const boost::shared_ptr<Primitive>&);
 	static map<string, CreateAreaLight> &registeredAreaLights();
 	template <class T> class RegisterAreaLight : public RegisterLoader<CreateAreaLight> {
@@ -134,7 +149,7 @@ public:
 		virtual ~RegisterAreaLight<T>() {}
 	};
 
-	typedef VolumeRegion *(*CreateVolumeRegion)(const Transform&,
+	typedef Region *(*CreateVolumeRegion)(const Transform&,
 		const ParamSet&);
 	static map<string, CreateVolumeRegion> &registeredVolumeRegions();
 	template <class T> class RegisterVolumeRegion : public RegisterLoader<CreateVolumeRegion> {
@@ -142,6 +157,16 @@ public:
 		RegisterVolumeRegion<T>(const string &name) :
 			RegisterLoader<CreateVolumeRegion>(registeredVolumeRegions(), name, &T::CreateVolumeRegion) {}
 		virtual ~RegisterVolumeRegion<T>() {}
+	};
+
+	typedef Volume *(*CreateVolume)(const Transform&,
+		const ParamSet&);
+	static map<string, CreateVolume> &registeredVolumes();
+	template <class T> class RegisterVolume : public RegisterLoader<CreateVolume> {
+	public:
+		RegisterVolume<T>(const string &name) :
+			RegisterLoader<CreateVolume>(registeredVolumes(), name, &T::CreateVolume) {}
+		virtual ~RegisterVolume<T>() {}
 	};
 
 	typedef SurfaceIntegrator *(*CreateSurfaceIntegrator)(const ParamSet&);

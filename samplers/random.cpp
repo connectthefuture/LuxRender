@@ -22,13 +22,13 @@
 
 // random.cpp*
 #include "random.h"
-#include "vegas.h"
-//#include "randompx.h"
-#include "lowdiscrepancypx.h"
-#include "linear.h"
-#include "tilepx.h"
+#include "pixelsamplers/vegas.h"
+//#include "pixelsamplers/randompx.h"
+#include "pixelsamplers/hilbertpx.h"
+#include "pixelsamplers/lowdiscrepancypx.h"
+#include "pixelsamplers/linear.h"
+#include "pixelsamplers/tilepx.h"
 #include "scene.h"
-#include "hilbertpx.h"
 #include "dynload.h"
 #include "error.h"
 
@@ -41,12 +41,12 @@ RandomSampler* RandomSampler::clone() const
  }
 
 RandomSampler::RandomSampler(int xstart, int xend,
-                             int ystart, int yend, int ps, string pixelsampler)
+                             int ystart, int yend, u_int ps, string pixelsampler)
         : Sampler(xstart, xend, ystart, yend, ps)
 {
-    xPos = xPixelStart;
-    yPos = yPixelStart;
-    pixelSamples = ps;
+	xPos = xPixelStart;
+	yPos = yPixelStart;
+	pixelSamples = ps;
 
 	init = true;
 
@@ -57,7 +57,7 @@ RandomSampler::RandomSampler(int xstart, int xend,
 		pixelSampler = new LowdiscrepancyPixelSampler(xstart, xend, ystart, yend);
 //	else if(pixelsampler == "random")
 //		pixelSampler = new RandomPixelSampler(xstart, xend, ystart, yend);
-    else if((pixelsampler == "tile") || (pixelsampler == "grid"))
+	else if((pixelsampler == "tile") || (pixelsampler == "grid"))
 		pixelSampler = new TilePixelSampler(xstart, xend, ystart, yend);
 	else if(pixelsampler == "hilbert")
 		pixelSampler = new HilbertPixelSampler(xstart, xend, ystart, yend);
@@ -67,11 +67,10 @@ RandomSampler::RandomSampler(int xstart, int xend,
 	TotalPixels = pixelSampler->GetTotalPixels();
 
 	// Get storage for a pixel's worth of stratified samples
-	imageSamples = AllocAligned<float>(7 * pixelSamples);
+	imageSamples = AllocAligned<float>(6 * pixelSamples);
 	lensSamples = imageSamples + 2 * pixelSamples;
 	timeSamples = lensSamples +  2 * pixelSamples;
 	wavelengthsSamples = timeSamples + pixelSamples;
-	singleWavelengthSamples = wavelengthsSamples + pixelSamples;
 
 	samplePos = pixelSamples;
 }
@@ -112,7 +111,7 @@ bool RandomSampler::GetNextSample(Sample *sample, u_int *use_pos)
 		} else
 			haveMoreSample = (!pixelSampler->renderingDone);
 
-		for (int i = 0; i < 7 * pixelSamples; ++i) {
+		for (u_int i = 0; i < 6 * pixelSamples; ++i) {
 			imageSamples[i] = tspack->rng->floatValue();
 		}
 
@@ -120,7 +119,7 @@ bool RandomSampler::GetNextSample(Sample *sample, u_int *use_pos)
 	}
 	// reset so scene knows to increment
 	if (samplePos >= pixelSamples-1)
-		*use_pos = -1;
+		*use_pos = ~0U;
 	// Return next \mono{RandomSampler} sample point
 	sample->imageX = xPos + imageSamples[2*samplePos];
 	sample->imageY = yPos + imageSamples[2*samplePos+1];
@@ -128,7 +127,6 @@ bool RandomSampler::GetNextSample(Sample *sample, u_int *use_pos)
 	sample->lensV = lensSamples[2*samplePos+1];
 	sample->time = timeSamples[samplePos];
 	sample->wavelengths = wavelengthsSamples[samplePos];
-	sample->singleWavelength = singleWavelengthSamples[samplePos];
 	// Generate stratified samples for integrators
 	for (u_int i = 0; i < sample->n1D.size(); ++i) {
 		for (u_int j = 0; j < sample->n1D[i]; ++j)
@@ -169,7 +167,7 @@ Sampler* RandomSampler::CreateSampler(const ParamSet &params, const Film *film)
     film->GetSampleExtent(&xstart, &xend, &ystart, &yend);
     return new RandomSampler(xstart, xend,
                              ystart, yend,
-                             nsamp, pixelsampler);
+                             max(nsamp, 0), pixelsampler);
 }
 
 static DynamicLoader::RegisterSampler<RandomSampler> r("random");

@@ -23,8 +23,14 @@
 
 // scale.cpp*
 #include "lux.h"
+#include "context.h"
+#include "spectrum.h"
 #include "texture.h"
+#include "color.h"
 #include "paramset.h"
+
+#include <map>
+using std::map;
 
 namespace lux
 {
@@ -34,27 +40,22 @@ template <class T1, class T2>
 class ScaleTexture : public Texture<T2> {
 public:
 	// ScaleTexture Public Methods
-	ScaleTexture(boost::shared_ptr<Texture<T1> > t1,
-			boost::shared_ptr<Texture<T2> > t2) {
-		tex1 = t1;
-		tex2 = t2;
-	}
+	ScaleTexture(boost::shared_ptr<Texture<T1> > &t1,
+		boost::shared_ptr<Texture<T2> > &t2) : tex1(t1), tex2(t2) { }
 	virtual ~ScaleTexture() { }
 	virtual T2 Evaluate(const TsPack *tspack, const DifferentialGeometry &dg) const {
 		return tex1->Evaluate(tspack, dg) * tex2->Evaluate(tspack, dg);
 	}
-	virtual void SetPower(float power, float area) {
-		// Update sub-textures
-		tex1->SetPower(power, area);
-		tex2->SetPower(power, area);
-	}
+	// In Y() one of the textures must use Filter to avoid double W->lm conv
+	virtual float Y() const { return tex1->Filter() * tex2->Y(); }
+	virtual float Filter() const { return tex1->Filter() * tex2->Filter(); }
 	virtual void SetIlluminant() {
 		// Update sub-textures
 		tex1->SetIlluminant();
 		tex2->SetIlluminant();
 	}
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const ParamSet &tp);
+	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 private:
 	boost::shared_ptr<Texture<T1> > tex1;
 	boost::shared_ptr<Texture<T2> > tex2;
@@ -62,16 +63,25 @@ private:
 
 // ScaleTexture Method Definitions
 template <class T, class U> inline Texture<float> * ScaleTexture<T,U>::CreateFloatTexture(const Transform &tex2world,
-		const TextureParams &tp) {
-	return new ScaleTexture<float, float>(tp.GetFloatTexture("tex1", 1.f),
-		tp.GetFloatTexture("tex2", 1.f));
+	const ParamSet &tp)
+{
+	boost::shared_ptr<Texture<float> > tex1(tp.GetFloatTexture("tex1", 1.f)),
+		tex2(tp.GetFloatTexture("tex2", 1.f));
+	return new ScaleTexture<float, float>(tex1,tex2);
 }
 
 template <class T,class U> inline Texture<SWCSpectrum> * ScaleTexture<T,U>::CreateSWCSpectrumTexture(const Transform &tex2world,
-		const TextureParams &tp) {
-	return new ScaleTexture<SWCSpectrum, SWCSpectrum>(
-		tp.GetSWCSpectrumTexture("tex1", RGBColor(1.f)),
-		tp.GetSWCSpectrumTexture("tex2", RGBColor(1.f)));
+	const ParamSet &tp)
+{
+	boost::shared_ptr<Texture<SWCSpectrum> > tex2(tp.GetSWCSpectrumTexture("tex2", RGBColor(1.f)));
+	map<string, boost::shared_ptr<Texture<float> > > *ft = Context::GetActiveFloatTextures();
+	if (ft->find(string("tex1")) == ft->end()) {
+		boost::shared_ptr<Texture<SWCSpectrum> > tex1(tp.GetSWCSpectrumTexture("tex1", RGBColor(1.f)));
+		return new ScaleTexture<SWCSpectrum, SWCSpectrum>(tex1, tex2);
+	} else {
+		boost::shared_ptr<Texture<float> > ftex1(tp.GetFloatTexture("tex1", 1.f));
+		return new ScaleTexture<float, SWCSpectrum>(ftex1, tex2);
+	}
 }
 
 }//namespace lux

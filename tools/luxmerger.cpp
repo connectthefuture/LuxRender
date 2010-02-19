@@ -37,12 +37,8 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/scoped_ptr.hpp>
 
-#include "lux.h"
 #include "api.h"
-#include "context.h"
-#include "fleximage.h"
-#include "error.h"
-#include "osfunc.h"
+#include "film/fleximage.h"
 
 #if defined(WIN32) && !defined(__CYGWIN__) /* We need the following two to set stdout to binary */
 #include <io.h>
@@ -97,16 +93,16 @@ int main(int ac, char *av[]) {
 
 		if (vm.count("help")) {
 			ss.str("");
-			ss << "Usage: flmmerger [options] file...\n" << visible;
+			ss << "Usage: luxmerger [options] file...\n" << visible;
 			luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
 			return 0;
 		}
 
 		if (vm.count("verbosity"))
-			luxLogFilter = vm["verbosity"].as<int>();
+			luxErrorFilter(vm["verbosity"].as<int>());
 
 		ss.str("");
-		ss << "Lux version " << LUX_VERSION << " of " << __DATE__ << " at " << __TIME__;
+		ss << "Lux version " << luxVersion() << " of " << __DATE__ << " at " << __TIME__;
 		luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
 		if (vm.count("version"))
 			return 0;
@@ -185,7 +181,7 @@ int main(int ac, char *av[]) {
 			film->WriteFilm(outputFileName);
 		} else {
 			ss.str("");
-			ss << "flmmerger: no input file";
+			ss << "luxmerger: no input file";
 			luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
 		}
 

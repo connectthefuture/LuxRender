@@ -22,16 +22,22 @@
 
 // mirror.cpp*
 #include "mirror.h"
+#include "memory.h"
 #include "bxdf.h"
 #include "specularreflection.h"
 #include "fresnelnoop.h"
+#include "texture.h"
+#include "color.h"
 #include "paramset.h"
 #include "dynload.h"
 
 using namespace lux;
 
 // Mirror Method Definitions
-BSDF *Mirror::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, const DifferentialGeometry &dgShading) const {
+BSDF *Mirror::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom,
+	const DifferentialGeometry &dgShading,
+	const Volume *exterior, const Volume *interior) const
+{
 	// Allocate _BSDF_, possibly doing bump-mapping with _bumpMap_
 	DifferentialGeometry dgs;
 	if (bumpMap)
@@ -44,9 +50,10 @@ BSDF *Mirror::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, 
 
 	// NOTE - lordcrc - changed clamping to 0..1 to avoid >1 reflection
 	SWCSpectrum R = Kr->Evaluate(tspack, dgs).Clamp(0.f, 1.f);
-	BxDF *bxdf = BSDF_ALLOC(tspack, SpecularReflection)(R,
-		BSDF_ALLOC(tspack, FresnelNoOp)(), flm, flmindex);
-	SingleBSDF *bsdf = BSDF_ALLOC(tspack, SingleBSDF)(dgs, dgGeom.nn, bxdf);
+	BxDF *bxdf = ARENA_ALLOC(tspack->arena, SpecularReflection)(R,
+		ARENA_ALLOC(tspack->arena, FresnelNoOp)(), flm, flmindex);
+	SingleBSDF *bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dgs,
+		dgGeom.nn, bxdf);
 
 	// Add ptr to CompositingParams structure
 	bsdf->SetCompositingParams(compParams);
@@ -54,11 +61,11 @@ BSDF *Mirror::GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, 
 	return bsdf;
 }
 Material* Mirror::CreateMaterial(const Transform &xform,
-		const TextureParams &mp) {
-	boost::shared_ptr<Texture<SWCSpectrum> > Kr = mp.GetSWCSpectrumTexture("Kr", RGBColor(1.f));
-	boost::shared_ptr<Texture<float> > film = mp.GetFloatTexture("film", 0.f);				// Thin film thickness in nanometers
-	boost::shared_ptr<Texture<float> > filmindex = mp.GetFloatTexture("filmindex", 1.5f);				// Thin film index of refraction
-	boost::shared_ptr<Texture<float> > bumpMap = mp.GetFloatTexture("bumpmap");
+		const ParamSet &mp) {
+	boost::shared_ptr<Texture<SWCSpectrum> > Kr(mp.GetSWCSpectrumTexture("Kr", RGBColor(1.f)));
+	boost::shared_ptr<Texture<float> > film(mp.GetFloatTexture("film", 0.f));				// Thin film thickness in nanometers
+	boost::shared_ptr<Texture<float> > filmindex(mp.GetFloatTexture("filmindex", 1.5f));				// Thin film index of refraction
+	boost::shared_ptr<Texture<float> > bumpMap(mp.GetFloatTexture("bumpmap"));
 
 	// Get Compositing Params
 	CompositingParams cP;

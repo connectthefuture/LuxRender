@@ -27,10 +27,8 @@
 
 #include "lux.h"
 #include "transport.h"
-#include "scene.h"
-#include "kdtree.h"
-#include "sampling.h"
 #include "photonmap.h"
+#include "renderinghints.h"
 
 namespace lux
 {
@@ -39,18 +37,13 @@ class ExPhotonIntegrator : public SurfaceIntegrator {
 public:
 	// ExPhotonIntegrator types
 	enum RenderingMode { RM_DIRECTLIGHTING, RM_PATH };
-	enum LightStrategy {
-		SAMPLE_ALL_UNIFORM, SAMPLE_ONE_UNIFORM,
-		SAMPLE_AUTOMATIC
-	};
 
 	// ExPhotonIntegrator Public Methods
 	ExPhotonIntegrator(
 			RenderingMode rm,
-			LightStrategy st,
-			int ndir, int ncaus, int nindir, int nrad,
-			int nLookup, int mdepth, int mpdepth,
-			float maxdist, bool finalGather, int gatherSamples, float ga,
+			u_int ndir, u_int ncaus, u_int nindir, u_int nrad,
+			u_int nLookup, u_int mdepth, u_int mpdepth,
+			float maxdist, bool finalGather, u_int gatherSamples, float ga,
 			PhotonMapRRStrategy rrstrategy, float rrcontprob,
 			float distThreshold,
 			string *mapsFileName,
@@ -58,7 +51,7 @@ public:
 			bool dbgEnableIndirect, bool dbgEnableSpecular);
 	virtual ~ExPhotonIntegrator();
 
-	virtual int Li(const TsPack *tspack, const Scene *scene,
+	virtual u_int Li(const TsPack *tspack, const Scene *scene,
 		const Sample *sample) const;
 	virtual void RequestSamples(Sample *sample, const Scene *scene);
 	virtual void Preprocess(const TsPack *tspack, const Scene *scene);
@@ -67,21 +60,22 @@ public:
 private:
     SWCSpectrum LiDirectLightingMode(const TsPack *tspack, const Scene *scene, 
 		const RayDifferential &ray, const Sample *sample, float *alpha,
-		const int reflectionDepth, const bool specularBounce) const;
+		const u_int reflectionDepth, const bool specularBounce) const;
     SWCSpectrum LiPathMode(const TsPack *tspack, const Scene *scene,
 		const RayDifferential &ray, const Sample *sample, float *alpha) const;
 
 	// ExPhotonIntegrator Private Data
+	SurfaceIntegratorRenderingHints hints;
+
 	RenderingMode renderingMode;
-	LightStrategy lightStrategy;
 	u_int nDirectPhotons, nCausticPhotons, nIndirectPhotons, nRadiancePhotons;
 	u_int nLookup;
-	int maxDepth, maxPhotonDepth;
+	u_int maxDepth, maxPhotonDepth;
 	float maxDistSquared;
 
 	bool finalGather;
 	float cosGatherAngle;
-	int gatherSamples;
+	u_int gatherSamples;
 	PhotonMapRRStrategy rrStrategy;
 	float rrContinueProbability;
 	float distanceThreshold;
@@ -93,12 +87,12 @@ private:
 	bool debugEnableDirect, debugUseRadianceMap, debugEnableCaustic,
 			debugEnableIndirect, debugEnableSpecular;
 
-	int bufferId;
+	u_int bufferId;
 
 	// Declare sample parameters for light source sampling
-	int sampleOffset;
-	int sampleFinalGather1Offset;
-	int sampleFinalGather2Offset;
+	u_int sampleOffset;
+	u_int sampleFinalGather1Offset;
+	u_int sampleFinalGather2Offset;
 
 	LightPhotonMap *causticMap;
 	LightPhotonMap *indirectMap;

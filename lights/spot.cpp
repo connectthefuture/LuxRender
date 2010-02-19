@@ -22,9 +22,11 @@
 
 // spot.cpp*
 #include "spot.h"
+#include "memory.h"
+#include "color.h"
+#include "bxdf.h"
 #include "mc.h"
 #include "paramset.h"
-#include "reflection/bxdf.h"
 #include "dynload.h"
 
 using namespace lux;
@@ -46,7 +48,7 @@ public:
 	SpotBxDF(float width, float fall) : BxDF(BxDFType(BSDF_REFLECTION | BSDF_DIFFUSE)), cosTotalWidth(width), cosFalloffStart(fall) {}
 	virtual ~SpotBxDF() { }
 	virtual void f(const TsPack *tspack, const Vector &wo, const Vector &wi, SWCSpectrum *const f) const {
-		*f += LocalFalloff(wi, cosTotalWidth, cosFalloffStart);
+		*f += LocalFalloff(wi, cosTotalWidth, cosFalloffStart) / fabsf(wo.z);
 	}
 	virtual bool Sample_f(const TsPack *tspack, const Vector &wo, Vector *wi, float u1, float u2, SWCSpectrum *const f,float *pdf, float *pdfBack = NULL, bool reverse = false) const
 	{
@@ -54,7 +56,7 @@ public:
 		*pdf = UniformConePdf(cosTotalWidth);
 		if (pdfBack)
 			*pdfBack = Pdf(tspack, *wi, wo);
-		*f = LocalFalloff(*wi, cosTotalWidth, cosFalloffStart);
+		*f = LocalFalloff(*wi, cosTotalWidth, cosFalloffStart) / fabsf(wi->z);
 		return true;
 	}
 	virtual float Pdf(const TsPack *tspack, const Vector &wi, const Vector &wo) const
@@ -70,12 +72,11 @@ private:
 
 // SpotLight Method Definitions
 SpotLight::SpotLight(const Transform &light2world,
-		const boost::shared_ptr< Texture<SWCSpectrum> > L, 
+		const boost::shared_ptr< Texture<SWCSpectrum> > &L, 
 		float g, float width, float fall)
-	: Light(light2world) {
+	: Light(light2world), Lbase(L) {
 	lightPos = LightToWorld(Point(0,0,0));
 
-	Lbase = L;
 	Lbase->SetIlluminant();
 	gain = g;
 
@@ -94,13 +95,13 @@ SWCSpectrum SpotLight::Sample_L(const TsPack *tspack, const Point &p, float u1, 
 	return Lbase->Evaluate(tspack, dummydg) * gain * Falloff(-*wi) /
 		DistanceSquared(lightPos, p);
 }
-float SpotLight::Pdf(const Point &, const Vector &) const {
+float SpotLight::Pdf(const TsPack *tspack, const Point &, const Vector &) const {
 	return 0.;
 }
-float SpotLight::Pdf(const Point &p, const Normal &n,
+float SpotLight::Pdf(const TsPack *tspack, const Point &p, const Normal &n,
 	const Point &po, const Normal &ns) const
 {
-	return AbsDot(Normalize(p - po), ns) / DistanceSquared(p, po);
+	return 1.f;
 }
 SWCSpectrum SpotLight::Sample_L(const TsPack *tspack, const Scene *scene, float u1,
 		float u2, float u3, float u4,
@@ -117,10 +118,10 @@ bool SpotLight::Sample_L(const TsPack *tspack, const Scene *scene, float u1, flo
 	Vector dpdu, dpdv;
 	CoordinateSystem(Vector(ns), &dpdu, &dpdv);
 	DifferentialGeometry dg(lightPos, ns, dpdu, dpdv, Normal(0, 0, 0), Normal(0, 0, 0), 0, 0, NULL);
-	*bsdf = BSDF_ALLOC(tspack, SingleBSDF)(dg, ns,
-		BSDF_ALLOC(tspack, SpotBxDF)(cosTotalWidth, cosFalloffStart));
+	*bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dg, ns,
+		ARENA_ALLOC(tspack->arena, SpotBxDF)(cosTotalWidth, cosFalloffStart));
 	*pdf = 1.f;
-	*Le = Lbase->Evaluate(tspack, dummydg) * gain;
+	*Le = Lbase->Evaluate(tspack, dg) * gain;
 	return true;
 }
 bool SpotLight::Sample_L(const TsPack *tspack, const Scene *scene, const Point &p, const Normal &n,
@@ -128,16 +129,16 @@ bool SpotLight::Sample_L(const TsPack *tspack, const Scene *scene, const Point &
 	VisibilityTester *visibility, SWCSpectrum *Le) const
 {
 	const Vector w(p - lightPos);
-	*pdfDirect = 1.f / w.LengthSquared();
+	*pdfDirect = 1.f;
 	Normal ns = LightToWorld(Normal(0, 0, 1));
 	*pdf = 1.f;
 	Vector dpdu, dpdv;
 	CoordinateSystem(Vector(ns), &dpdu, &dpdv);
 	DifferentialGeometry dg(lightPos, ns, dpdu, dpdv, Normal(0, 0, 0), Normal(0, 0, 0), 0, 0, NULL);
-	*bsdf = BSDF_ALLOC(tspack, SingleBSDF)(dg, ns,
-		BSDF_ALLOC(tspack, SpotBxDF)(cosTotalWidth, cosFalloffStart));
+	*bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dg, ns,
+		ARENA_ALLOC(tspack->arena, SpotBxDF)(cosTotalWidth, cosFalloffStart));
 	visibility->SetSegment(p, lightPos, tspack->time);
-	*Le = Lbase->Evaluate(tspack, dummydg) * gain;
+	*Le = Lbase->Evaluate(tspack, dg) * gain;
 	return true;
 }
 SWCSpectrum SpotLight::Le(const TsPack *tspack, const Scene *scene, const Ray &r,
@@ -145,8 +146,9 @@ SWCSpectrum SpotLight::Le(const TsPack *tspack, const Scene *scene, const Ray &r
 {
 	return SWCSpectrum(0.f);
 }
-Light* SpotLight::CreateLight(const Transform &l2w, const ParamSet &paramSet, const TextureParams &tp) {
-	boost::shared_ptr<Texture<SWCSpectrum> > L = tp.GetSWCSpectrumTexture("L", RGBColor(1.f));
+Light* SpotLight::CreateLight(const Transform &l2w, const ParamSet &paramSet)
+{
+	boost::shared_ptr<Texture<SWCSpectrum> > L(paramSet.GetSWCSpectrumTexture("L", RGBColor(1.f)));
 	float g = paramSet.FindOneFloat("gain", 1.f);
 	float coneangle = paramSet.FindOneFloat("coneangle", 30.);
 	float conedelta = paramSet.FindOneFloat("conedeltaangle", 5.);
@@ -161,12 +163,14 @@ Light* SpotLight::CreateLight(const Transform &l2w, const ParamSet &paramSet, co
 	                                dir.x, dir.y, dir.z, 0.,
 	                                    0,     0,     0, 1.));
 	Transform dirToZ = Transform(o);
-	Transform light2world =
-	l2w *
-	Translate(Vector(from.x, from.y, from.z)) *
-	dirToZ.GetInverse();
-	return new SpotLight(light2world, L, g, coneangle,
+	Transform light2world = l2w *
+		Translate(Vector(from.x, from.y, from.z)) *
+		dirToZ.GetInverse();
+
+	SpotLight *l = new SpotLight(light2world, L, g, coneangle,
 		coneangle-conedelta);
+	l->hints.InitParam(paramSet);
+	return l;
 }
 
 static DynamicLoader::RegisterLight<SpotLight> r("spot");

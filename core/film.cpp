@@ -25,8 +25,29 @@
 #include "randomgen.h"
 #include "dynload.h"
 #include "paramset.h"
+#include "scene.h"		// for Scene
 #include "tonemap.h"
+#include "filter.h"
+#include "contribution.h"
 #include "stats.h"
+#include "blackbodyspd.h"
+#include "osfunc.h"
+
+
+#include <iostream>
+#include <fstream>
+
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/serialization/split_member.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filtering_streambuf.hpp>
+#include <boost/iostreams/copy.hpp>
+#include <boost/iostreams/filter/zlib.hpp>
+#include <boost/iostreams/filter/bzip2.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 
 #define cimg_display_type  0
 
@@ -62,77 +83,82 @@ using namespace cimg_library;
 #include <pthread.h>
 #endif
 
+using namespace boost::iostreams;
+using namespace lux;
 
 namespace lux
 {
 
 template<class T> T bilinearSampleImage(const vector<T> &pixels,
-	const int xResolution, const int yResolution, 
+	const u_int xResolution, const u_int yResolution, 
 	const float x, const float y)
 {
-	int x1 = Clamp<int>(Floor2Int(x), 0, xResolution-1);
-	int y1 = Clamp<int>(Floor2Int(y), 0, yResolution-1);
-	int x2 = Clamp<int>(x1+1, 0, xResolution-1);
-	int y2 = Clamp<int>(y1+1, 0, yResolution-1);
-	float tx = Clamp<float>(x - x1, 0, 1);
-	float ty = Clamp<float>(y - y1, 0, 1);
+	u_int x1 = Clamp(Floor2UInt(x), 0U, xResolution - 1);
+	u_int y1 = Clamp(Floor2UInt(y), 0U, yResolution - 1);
+	u_int x2 = Clamp(x1 + 1, 0U, xResolution - 1);
+	u_int y2 = Clamp(y1 + 1, 0U, yResolution - 1);
+	float tx = Clamp(x - static_cast<float>(x1), 0.f, 1.f);
+	float ty = Clamp(y - static_cast<float>(y1), 0.f, 1.f);
 
 	T c(0.f);
-	c.AddWeighted((1.f-tx) * (1.f-ty), pixels[y1*xResolution+x1]);
-	c.AddWeighted(tx       * (1.f-ty), pixels[y1*xResolution+x2]);
-	c.AddWeighted((1.f-tx) * ty,       pixels[y2*xResolution+x1]);
-	c.AddWeighted(tx       * ty,       pixels[y2*xResolution+x2]);
+	c.AddWeighted((1.f - tx) * (1.f - ty), pixels[y1 * xResolution + x1]);
+	c.AddWeighted(tx         * (1.f - ty), pixels[y1 * xResolution + x2]);
+	c.AddWeighted((1.f - tx) * ty,         pixels[y2 * xResolution + x1]);
+	c.AddWeighted(tx         * ty,         pixels[y2 * xResolution + x2]);
+
 	return c;
 }
 
 // horizontal blur
 void horizontalGaussianBlur(const vector<XYZColor> &in, vector<XYZColor> &out,
-	const int xResolution, const int yResolution, float std_dev)
+	const u_int xResolution, const u_int yResolution, float std_dev)
 {
-	int rad_needed = Ceil2Int(std_dev * 4);//kernel_radius;
+	u_int rad_needed = Ceil2UInt(std_dev * 4.f);//kernel_radius;
 
-	const int lookup_size = rad_needed + 1;
+	const u_int lookup_size = rad_needed + 1;
 	//build filter lookup table
 	std::vector<float> filter_weights(lookup_size);
-	for(int x = 0; x < lookup_size; ++x)
-		filter_weights[x] = expf(- x*x / (std_dev*std_dev));
-
-	//normalise filter kernel
-	float sweight = 0.0f;
-	for(int i = -rad_needed; i <= rad_needed; ++i)
-		sweight += filter_weights[abs(i)];
-
-	sweight = 1.f / sweight;
-
-	for(int x = 0; x < lookup_size; ++x) {
-		filter_weights[x] *= sweight;
-		if (filter_weights[x] < 1.0e-12f)
-			rad_needed--;
+	float sweight = 0.f;
+	for(u_int x = 0; x < lookup_size; ++x) {
+		filter_weights[x] = expf(-static_cast<float>(x) * static_cast<float>(x) / (std_dev * std_dev));
+		if (x > 0) {
+			if (filter_weights[x] < 1e-12f) {
+				rad_needed = x;
+				break;
+			}
+			sweight += 2.f * filter_weights[x];
+		} else
+			sweight += filter_weights[x];
 	}
 
-	const int pixel_rad = rad_needed;
+	//normalise filter kernel
+	sweight = 1.f / sweight;
+
+	const u_int pixel_rad = rad_needed;
 
 	//------------------------------------------------------------------
 	//blur in x direction
 	//------------------------------------------------------------------
-	for(int y = 0; y < yResolution; ++y) {
-		for(int x = 0; x < xResolution; ++x) {
-			const int a = y*xResolution + x;
+	for(u_int y = 0; y < yResolution; ++y) {
+		for(u_int x = 0; x < xResolution; ++x) {
+			const u_int a = y * xResolution + x;
 
 			out[a] = XYZColor(0.f);
 
-			for(int i = -pixel_rad; i <= pixel_rad; ++i) {
-				int dx = Clamp(x+i, 0, xResolution-1) - x;
-				out[a].AddWeighted(filter_weights[abs(i)], in[a+dx]);
+			for (u_int i = max(x, pixel_rad) - pixel_rad; i <= min(x + pixel_rad, xResolution - 1); ++i) {
+				if (i < x)
+					out[a].AddWeighted(filter_weights[x - i], in[a + i - x]);
+				else
+					out[a].AddWeighted(filter_weights[i - x], in[a + i - x]);
 			}
 		}
 	}
 }
 
 void rotateImage(const vector<XYZColor> &in, vector<XYZColor> &out,
-	const int xResolution, const int yResolution, float angle)
+	const u_int xResolution, const u_int yResolution, float angle)
 {
-	const int maxRes = max(xResolution, yResolution);
+	const u_int maxRes = max(xResolution, yResolution);
 
 	const float s = sinf(-angle);
 	const float c = cosf(-angle);
@@ -140,13 +166,13 @@ void rotateImage(const vector<XYZColor> &in, vector<XYZColor> &out,
 	const float cx = xResolution * 0.5f;
 	const float cy = yResolution * 0.5f;
 
-	for(int y = 0; y < maxRes; ++y) {
-		float px = 0 - maxRes * 0.5f;
+	for(u_int y = 0; y < maxRes; ++y) {
+		float px = 0.f - maxRes * 0.5f;
 		float py = y - maxRes * 0.5f;
 
 		float rx = px * c - py * s + cx;
 		float ry = px * s + py * c + cy;
-		for(int x = 0; x < maxRes; ++x) {
+		for(u_int x = 0; x < maxRes; ++x) {
 			out[y*maxRes + x] = bilinearSampleImage<XYZColor>(in, xResolution, yResolution, rx, ry);
 			// x = x + dx
 			rx += c;
@@ -158,7 +184,7 @@ void rotateImage(const vector<XYZColor> &in, vector<XYZColor> &out,
 
 // Image Pipeline Function Definitions
 void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
-	int xResolution, int yResolution,
+	u_int xResolution, u_int yResolution,
 	const GREYCStorationParams &GREYCParams, const ChiuParams &chiuParams,
 	ColorSystem &colorSpace, Histogram *histogram, bool HistogramEnabled,
 	bool &haveBloomImage, XYZColor *&bloomImage, bool bloomUpdate,
@@ -166,14 +192,14 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 	bool VignettingEnabled, float VignetScale,
 	bool aberrationEnabled, float aberrationAmount,
 	bool &haveGlareImage, XYZColor *&glareImage, bool glareUpdate,
-	float glareAmount, float glareRadius, int glareBlades,
+	float glareAmount, float glareRadius, u_int glareBlades,
 	const char *toneMapName, const ParamSet *toneMapParams,
 	float gamma, float dither)
 {
-	const int nPix = xResolution * yResolution;
+	const u_int nPix = xResolution * yResolution;
 
 	// Clamp input
-	for (int i = 0; i < nPix; ++i)
+	for (u_int i = 0; i < nPix; ++i)
 		xyzpixels[i] = xyzpixels[i].Clamp();
 
 
@@ -181,12 +207,12 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 	if (bloomRadius > 0.f && bloomWeight > 0.f) {
 		if(bloomUpdate) {
 			// Compute image-space extent of bloom effect
-			const int bloomSupport = Float2Int(bloomRadius *
+			const u_int bloomSupport = Float2UInt(bloomRadius *
 				max(xResolution, yResolution));
-			const int bloomWidth = bloomSupport / 2;
+			const u_int bloomWidth = bloomSupport / 2;
 			// Initialize bloom filter table
 			vector<float> bloomFilter(bloomWidth * bloomWidth);
-			for (int i = 0; i < bloomWidth * bloomWidth; ++i) {
+			for (u_int i = 0; i < bloomWidth * bloomWidth; ++i) {
 				float dist = sqrtf(i) / bloomWidth;
 				bloomFilter[i] = powf(max(0.f, 1.f - dist), 4.f);
 			}
@@ -200,25 +226,24 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 			// Apply bloom filter to image pixels
 			//			vector<Color> bloomImage(nPix);
 			ProgressReporter prog(yResolution, "Bloom filter"); //NOBOOK
-			for (int y = 0; y < yResolution; ++y) {
-				for (int x = 0; x < xResolution; ++x) {
+			for (u_int y = 0; y < yResolution; ++y) {
+				for (u_int x = 0; x < xResolution; ++x) {
 					// Compute bloom for pixel _(x,y)_
 					// Compute extent of pixels contributing bloom
-					int x0 = max(0, x - bloomWidth);
-					int x1 = min(x + bloomWidth, xResolution - 1);
-					int y0 = max(0, y - bloomWidth);
-					int y1 = min(y + bloomWidth, yResolution - 1);
-					int offset = y * xResolution + x;
-					float sumWt = 0.;
-					for (int by = y0; by <= y1; ++by) {
-						for (int bx = x0; bx <= x1; ++bx) {
-							// Accumulate bloom from pixel $(bx,by)$
-							int dx = x - bx, dy = y - by;
-							if (dx == 0 && dy == 0)
+					const u_int x0 = max(x, bloomWidth) - bloomWidth;
+					const u_int x1 = min(x + bloomWidth, xResolution - 1);
+					const u_int y0 = max(y, bloomWidth) - bloomWidth;
+					const u_int y1 = min(y + bloomWidth, yResolution - 1);
+					const u_int offset = y * xResolution + x;
+					float sumWt = 0.f;
+					for (u_int by = y0; by <= y1; ++by) {
+						for (u_int bx = x0; bx <= x1; ++bx) {
+							if (bx == x && by == y)
 								continue;
-							int dist2 = dx*dx + dy*dy;
+							// Accumulate bloom from pixel $(bx,by)$
+							const u_int dist2 = (x - bx) * (x - bx) + (y - by) * (y - by);
 							if (dist2 < bloomWidth * bloomWidth) {
-								int bloomOffset = bx + by * xResolution;
+								u_int bloomOffset = bx + by * xResolution;
 								float wt = bloomFilter[dist2];
 								sumWt += wt;
 								bloomImage[offset].AddWeighted(wt, xyzpixels[bloomOffset]);
@@ -234,11 +259,11 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 
 		// Mix bloom effect into each pixel
 		if(haveBloomImage && bloomImage != NULL)
-			for (int i = 0; i < nPix; ++i)
+			for (u_int i = 0; i < nPix; ++i)
 				xyzpixels[i] = Lerp(bloomWeight, xyzpixels[i], bloomImage[i]);
 	}
 
-	if (glareRadius > 0 && glareAmount > 0) {
+	if (glareRadius > 0.f && glareAmount > 0.f) {
 		if (glareUpdate) {
 			// Allocate persisting glare image layer if unallocated
 			if(!haveGlareImage) {
@@ -246,46 +271,46 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 				haveGlareImage = true;
 			}
 
-			int maxRes = max(xResolution, yResolution);
-			int nPix2 = maxRes*maxRes;
+			u_int maxRes = max(xResolution, yResolution);
+			u_int nPix2 = maxRes * maxRes;
 
 			std::vector<XYZColor> rotatedImage(nPix2);
 			std::vector<XYZColor> blurredImage(nPix2);
-			for(int i = 0; i < nPix; i++)
+			for(u_int i = 0; i < nPix; ++i)
 				glareImage[i] = XYZColor(0.f);
 
 			const float radius = maxRes * glareRadius;
 
 			// add rotated versions of the blurred image
-			for (int i = 0; i < glareBlades; i++) {
-				float angle = (float)i * 2*M_PI / glareBlades;
+			const float invBlades = 1.f / glareBlades;
+			float angle = 0.f;
+			for (u_int i = 0; i < glareBlades; ++i) {
 				rotateImage(xyzpixels, rotatedImage, xResolution, yResolution, angle);
 				horizontalGaussianBlur(rotatedImage, blurredImage, maxRes, maxRes, radius);
 				rotateImage(blurredImage, rotatedImage, maxRes, maxRes, -angle);
 
 				// add to output
-				for(int y=0; y<yResolution; ++y) {
-					for(int x=0; x<xResolution; ++x) {
-						int sx = (int)(x + (maxRes - xResolution) * 0.5f);
-						int sy = (int)(y + (maxRes - yResolution) * 0.5f);
+				for(u_int y = 0; y < yResolution; ++y) {
+					for(u_int x = 0; x < xResolution; ++x) {
+						const u_int sx = x + (maxRes - xResolution) / 2;
+						const u_int sy = y + (maxRes - yResolution) / 2;
 
 						glareImage[y*xResolution+x] += rotatedImage[sy*maxRes + sx];
 					}
 				}
+				angle += 2.f * M_PI * invBlades;
 			}
 
 			// normalize
-			const float nfactor = 1.f / glareBlades;
-
-			for(int i = 0; i < nPix; i++)
-				glareImage[i] *= nfactor;
+			for(u_int i = 0; i < nPix; ++i)
+				glareImage[i] *= invBlades;
 
 			rotatedImage.clear();
 			blurredImage.clear();
 		}
 
 		if (haveGlareImage && glareImage != NULL) {
-			for(int i = 0; i < nPix; i++)
+			for(u_int i = 0; i < nPix; ++i)
 				xyzpixels[i] = Lerp(glareAmount, xyzpixels[i], glareImage[i]);
 		}
 	}
@@ -301,7 +326,7 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 	// Convert to RGB
 	vector<RGBColor> &rgbpixels = reinterpret_cast<vector<RGBColor> &>(xyzpixels);
 	const float invGamma = 1.f / gamma;
-	for (int i = 0; i < nPix; ++i) {
+	for (u_int i = 0; i < nPix; ++i) {
 		rgbpixels[i] = colorSpace.ToRGBConstrained(xyzpixels[i]);
 		// Do gamma correction
 		rgbpixels[i] = rgbpixels[i].Pow(invGamma);
@@ -324,40 +349,40 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 		const float invxRes = 1.f / xResolution;
 		const float invyRes = 1.f / yResolution;
 		//for each pixel in the source image
-		for(int y=0; y<yResolution; ++y) {
-			for(int x=0; x<xResolution; ++x) {
-				const float nPx = (float)x * invxRes;
-				const float nPy = (float)y * invyRes;
+		for(u_int y = 0; y < yResolution; ++y) {
+			for(u_int x = 0; x < xResolution; ++x) {
+				const float nPx = x * invxRes;
+				const float nPy = y * invyRes;
 				const float xOffset = nPx - 0.5f;
 				const float yOffset = nPy - 0.5f;
-				float tOffset = sqrtf(xOffset*xOffset + yOffset*yOffset);
+				const float tOffset = sqrtf(xOffset * xOffset + yOffset * yOffset);
 					
 				if (aberrationEnabled && aberrationAmount > 0.f) {
-					const float rb_x = (0.5f + xOffset * (1.f + tOffset*aberrationAmount)) * xResolution;
-					const float rb_y = (0.5f + yOffset * (1.f + tOffset*aberrationAmount)) * yResolution;
-					const float g_x =  (0.5f + xOffset * (1.f - tOffset*aberrationAmount)) * xResolution;
-					const float g_y =  (0.5f + yOffset * (1.f - tOffset*aberrationAmount)) * yResolution;
+					const float rb_x = (0.5f + xOffset * (1.f + tOffset * aberrationAmount)) * xResolution;
+					const float rb_y = (0.5f + yOffset * (1.f + tOffset * aberrationAmount)) * yResolution;
+					const float g_x =  (0.5f + xOffset * (1.f - tOffset * aberrationAmount)) * xResolution;
+					const float g_y =  (0.5f + yOffset * (1.f - tOffset * aberrationAmount)) * yResolution;
 
 					const float redblue[] = {1.f, 0.f, 1.f};
 					const float green[] = {0.f, 1.f, 0.f};
 
-					outp[xResolution*y + x] += RGBColor(redblue) * bilinearSampleImage<RGBColor>(rgbpixels, xResolution, yResolution, rb_x, rb_y);
-					outp[xResolution*y + x] += RGBColor(green) * bilinearSampleImage<RGBColor>(rgbpixels, xResolution, yResolution, g_x, g_y);
+					outp[xResolution * y + x] += RGBColor(redblue) * bilinearSampleImage<RGBColor>(rgbpixels, xResolution, yResolution, rb_x, rb_y);
+					outp[xResolution * y + x] += RGBColor(green) * bilinearSampleImage<RGBColor>(rgbpixels, xResolution, yResolution, g_x, g_y);
 				}
 
 				// Vignetting
 				if(VignettingEnabled && VignetScale != 0.0f) {
 					// normalize to range [0.f - 1.f]
-					const float invNtOffset = 1.f - (fabsf(tOffset) * 1.42);
+					const float invNtOffset = 1.f - (fabsf(tOffset) * 1.42f);
 					float vWeight = Lerp(invNtOffset, 1.f - VignetScale, 1.f);
-					for(int i=0;i<3;i++)
+					for (u_int i = 0; i < 3; ++i)
 						outp[xResolution*y + x].c[i] *= vWeight;
 				}
 			}
 		}
 
 		if (aberrationEnabled) {
-			for(int i = 0; i < nPix; i++)
+			for(u_int i = 0; i < nPix; ++i)
 				rgbpixels[i] = aberrationImage[i];
 		}
 
@@ -377,54 +402,52 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 
 		// NOTE - lordcrc - if includecenter is false, make sure radius 
 		// is a tad higher than 1 to include other pixels
-		const float radius = max(chiuParams.radius, 1+(chiuParams.includecenter ? 0 : 1e-6));
+		const float radius = max(chiuParams.radius, 1.f + (chiuParams.includecenter ? 0.f : 1e-6f));
 
-		const int pixel_rad = Ceil2Int(radius);
-		const int lookup_size = pixel_rad + pixel_rad + 1;
+		const u_int pixel_rad = Ceil2UInt(radius);
+		const u_int lookup_size = 2 * pixel_rad + 1;
 
 		//build filter lookup table
 		std::vector<float> weights(lookup_size * lookup_size);
 
-		for(int y=0; y<lookup_size; ++y) {
-			for(int x=0; x<lookup_size; ++x) {
-				if(x == pixel_rad && y == pixel_rad)
-					weights[lookup_size*y + x] = chiuParams.includecenter ? 1.0f : 0.0f;
+		float sumweight = 0.f;
+		u_int offset = 0;
+		for(int y = -static_cast<int>(pixel_rad); y <= static_cast<int>(pixel_rad); ++y) {
+			for(int x = -static_cast<int>(pixel_rad); x <= static_cast<int>(pixel_rad); ++x) {
+				if(x == 0 && y == 0)
+					weights[offset] = chiuParams.includecenter ? 1.0f : 0.0f;
 				else {
-					const float dx = (float)(x - pixel_rad);
-					const float dy = (float)(y - pixel_rad);
-					const float dist = sqrt(dx*dx + dy*dy);
+					const float dx = x;
+					const float dy = y;
+					const float dist = sqrtf(dx * dx + dy * dy);
 					const float weight = powf(max(0.0f, 1.0f - dist / radius), 4.0f);
-					weights[lookup_size*y + x] = weight;
+					weights[offset] = weight;
 				}
+				sumweight += weights[offset++];
 			}
 		}
 
-		float sumweight = 0.0f;
-		for(int y=0; y<lookup_size; ++y)
-			for(int x=0; x<lookup_size; ++x)
-				sumweight += weights[lookup_size*y + x];
-
 		//normalise filter kernel
-		for(int y=0; y<lookup_size; ++y)
-			for(int x=0; x<lookup_size; ++x)
+		for(u_int y = 0; y < lookup_size; ++y)
+			for(u_int x = 0; x < lookup_size; ++x)
 				weights[lookup_size*y + x] /= sumweight;
 
 		//for each pixel in the source image
-		for(int y=0; y<yResolution; ++y) {
+		for (u_int y = 0; y < yResolution; ++y) {
 			//get min and max of current filter rect along y axis
-			const int miny = max(0, y - pixel_rad);
-			const int maxy = min(yResolution, y + pixel_rad + 1);
+			const u_int miny = max(y, pixel_rad) - pixel_rad;
+			const u_int maxy = min(yResolution - 1, y + pixel_rad);
 
-			for(int x=0; x<xResolution; ++x) {
+			for (u_int x = 0; x < xResolution; ++x) {
 				//get min and max of current filter rect along x axis
-				const int minx = max(0, x - pixel_rad);
-				const int maxx = min(xResolution, x + pixel_rad + 1);
+				const u_int minx = max(x, pixel_rad) - pixel_rad;
+				const u_int maxx = min(xResolution - 1, x + pixel_rad);
 
 				// For each pixel in the out image, in the filter radius
-				for(int ty=miny; ty<maxy; ++ty) {
-					for(int tx=minx; tx<maxx; ++tx) {
-						const int dx=x-tx+pixel_rad;
-						const int dy=y-ty+pixel_rad;
+				for(u_int ty = miny; ty < maxy; ++ty) {
+					for(u_int tx = minx; tx < maxx; ++tx) {
+						const u_int dx = x - tx + pixel_rad;
+						const u_int dy = y - ty + pixel_rad;
 						const float factor = weights[lookup_size*dy + dx];
 						chiuImage[xResolution*ty + tx].AddWeighted(factor, rgbpixels[xResolution*y + x]);
 					}
@@ -432,7 +455,7 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 			}
 		}
 		// Copyback
-		for(int i=0; i<nPix; i++)
+		for(u_int i = 0; i < nPix; ++i)
 			rgbpixels[i] = chiuImage[i];
 
 		// remove used intermediate memory
@@ -444,11 +467,11 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 	if(GREYCParams.enabled) {
 		// Define Cimg image buffer and copy data
 		CImg<float> img(xResolution, yResolution, 1, 3);
-		for(int y=0; y<yResolution; y++) {
-			for(int x=0; x<xResolution; x++) {
-				int index = xResolution * y + x;
+		for(u_int y = 0; y < yResolution; ++y) {
+			for(u_int x = 0; x < xResolution; ++x) {
+				const u_int index = xResolution * y + x;
 				// Note - Cimg float data must be in range [0,255] for GREYCStoration to work %100
-				for(int j=0; j<3; j++)
+				for(u_int j = 0; j < 3; ++j)
 					img(x, y, 0, j) = rgbpixels[index].c[j] * 255;
 			}
 		}
@@ -469,10 +492,10 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 
 		// Copy data from cimg buffer back to pixels vector
 		const float inv_byte = 1.f/255;
-		for(int y=0; y<yResolution; y++) {
-			for(int x=0; x<xResolution; x++) {
-				int index = xResolution * y + x;
-				for(int j=0; j<3; j++)
+		for(u_int y = 0; y < yResolution; ++y) {
+			for(u_int x = 0; x < xResolution; ++x) {
+				const u_int index = xResolution * y + x;
+				for(u_int j = 0; j < 3; ++j)
 					rgbpixels[index].c[j] = img(x, y, 0, j) * inv_byte;
 			}
 		}
@@ -480,13 +503,988 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 
 	// Dither image
 	if (dither > 0.f)
-		for (int i = 0; i < nPix; ++i)
+		for (u_int i = 0; i < nPix; ++i)
 			rgbpixels[i] += 2.f * dither * (lux::random::floatValueP() - .5f);
 }
 
 // Film Function Definitions
 
-void Film::getHistogramImage(unsigned char *outPixels, int width, int height, int options){
+#define FILTER_TABLE_SIZE 16
+
+u_int Film::GetXResolution()
+{
+	return xResolution;
+}
+
+u_int Film::GetYResolution()
+{
+	return yResolution;
+}
+
+Film::Film(u_int xres, u_int yres, Filter *filt, const float crop[4], 
+		   const string &filename1, bool premult, bool useZbuffer,
+		   bool w_resume_FLM, bool restart_resume_FLM, int haltspp, int halttime,
+		   int reject_warmup, bool debugmode) :
+	Queryable("film"),
+	xResolution(xres), yResolution(yres),
+	filter(filt), filename(filename1),
+	colorSpace(0.63f, 0.34f, 0.31f, 0.595f, 0.155f, 0.07f, 0.314275f, 0.329411f), // default is SMPTE
+	ZBuffer(NULL), use_Zbuf(useZbuffer),
+	debug_mode(debugmode), premultiplyAlpha(premult),
+	warmupComplete(false), reject_warmup_samples(reject_warmup),
+	writeResumeFlm(w_resume_FLM), restartResumeFlm(restart_resume_FLM),
+	haltSamplePerPixel(haltspp), haltTime(halttime),
+	EV(0.f), scene(NULL), histogram(NULL),
+	enoughSamplePerPixel(false)
+{
+	//Queryable parameters
+	AddIntAttribute("xResolution", boost::bind(&Film::GetXResolution, boost::ref(*this)) );
+	AddIntAttribute("yResolution", boost::bind(&Film::GetYResolution, boost::ref(*this)) );
+
+
+	// Compute film image extent
+	memcpy(cropWindow, crop, 4 * sizeof(float));
+	xPixelStart = Ceil2UInt(xResolution * cropWindow[0]);
+	xPixelCount = max(1U, Ceil2UInt(xResolution * cropWindow[1]) - xPixelStart);
+	yPixelStart = Ceil2UInt(yResolution * cropWindow[2]);
+	yPixelCount = max(1U, Ceil2UInt(yResolution * cropWindow[3]) - yPixelStart);
+	int xRealWidth = Floor2Int(xPixelStart + .5f + xPixelCount + filter->xWidth) - Floor2Int(xPixelStart + .5f - filter->xWidth);
+	int yRealHeight = Floor2Int(yPixelStart + .5f + yPixelCount + filter->yWidth) - Floor2Int(yPixelStart + .5f - filter->yWidth);
+	samplePerPass = xRealWidth * yRealHeight;
+
+	// calculate reject warmup samples
+	reject_warmup_samples = (static_cast<double>(xRealWidth) * static_cast<double>(yRealHeight)) * reject_warmup;
+
+	maxY = debug_mode ? INFINITY : 0.f;
+	warmupSamples = 0;
+	warmupComplete = debug_mode;
+
+	boost::xtime_get(&creationTime, boost::TIME_UTC);
+
+	// Precompute filter weight table
+	filterTable = new float[FILTER_TABLE_SIZE * FILTER_TABLE_SIZE];
+	float *ftp = filterTable;
+	for (u_int y = 0; y < FILTER_TABLE_SIZE; ++y) {
+		const float fy = (static_cast<float>(y) + .5f) * filter->yWidth / FILTER_TABLE_SIZE;
+		for (u_int x = 0; x < FILTER_TABLE_SIZE; ++x) {
+			const float fx = (static_cast<float>(x) + .5f) * filter->xWidth / FILTER_TABLE_SIZE;
+			*ftp++ = filter->Evaluate(fx, fy);
+		}
+	}
+}
+
+Film::~Film()
+{
+	delete[] filterTable;
+	delete filter;
+	delete ZBuffer;
+	delete histogram; 
+}
+
+void Film::RequestBufferGroups(const vector<string> &bg)
+{
+	for (u_int i = 0; i < bg.size(); ++i)
+		bufferGroups.push_back(BufferGroup(bg[i]));
+}
+
+u_int Film::RequestBuffer(BufferType type, BufferOutputConfig output,
+	const string& filePostfix)
+{
+	bufferConfigs.push_back(BufferConfig(type, output, filePostfix));
+	return bufferConfigs.size() - 1;
+}
+
+void Film::CreateBuffers()
+{
+	if (bufferGroups.size() == 0)
+		bufferGroups.push_back(BufferGroup("default"));
+	for (u_int i = 0; i < bufferGroups.size(); ++i)
+		bufferGroups[i].CreateBuffers(bufferConfigs,xPixelCount,yPixelCount);
+
+	// Allocate ZBuf buffer if needed
+	if(use_Zbuf)
+		ZBuffer = new PerPixelNormalizedFloatBuffer(xPixelCount,yPixelCount);
+
+    // Dade - check if we have to resume a rendering and restore the buffers
+    if(writeResumeFlm && !restartResumeFlm) {
+        // Dade - check if the film file exists
+        string fname = filename+".flm";
+		std::ifstream ifs(fname.c_str(), std::ios_base::in | std::ios_base::binary);
+
+        if(ifs.good()) {
+            // Dade - read the data
+            luxError(LUX_NOERROR, LUX_INFO, (std::string("Reading film status from file ")+fname).c_str());
+            UpdateFilm(ifs);
+        }
+
+        ifs.close();
+    }
+}
+
+void Film::SetGroupName(u_int index, const string& name) 
+{
+	if( index >= bufferGroups.size())
+		return;
+	bufferGroups[index].name = name;
+}
+string Film::GetGroupName(u_int index) const
+{
+	if (index >= bufferGroups.size())
+		return "";
+	return bufferGroups[index].name;
+}
+void Film::SetGroupEnable(u_int index, bool status)
+{
+	if (index >= bufferGroups.size())
+		return;
+	bufferGroups[index].enable = status;
+}
+bool Film::GetGroupEnable(u_int index) const
+{
+	if (index >= bufferGroups.size())
+		return false;
+	return bufferGroups[index].enable;
+}
+void Film::SetGroupScale(u_int index, float value)
+{
+	if (index >= bufferGroups.size())
+		return;
+	bufferGroups[index].globalScale = value;
+	ComputeGroupScale(index);
+}
+float Film::GetGroupScale(u_int index) const
+{
+	if (index >= bufferGroups.size())
+		return 0.f;
+	return bufferGroups[index].globalScale;
+}
+void Film::SetGroupRGBScale(u_int index, const RGBColor &value)
+{
+	if (index >= bufferGroups.size())
+		return;
+	bufferGroups[index].rgbScale = value;
+	ComputeGroupScale(index);
+}
+RGBColor Film::GetGroupRGBScale(u_int index) const
+{
+	if (index >= bufferGroups.size())
+		return 0.f;
+	return bufferGroups[index].rgbScale;
+}
+void Film::SetGroupTemperature(u_int index, float value)
+{
+	if (index >= bufferGroups.size())
+		return;
+	bufferGroups[index].temperature = value;
+	ComputeGroupScale(index);
+}
+float Film::GetGroupTemperature(u_int index) const
+{
+	if (index >= bufferGroups.size())
+		return 0.f;
+	return bufferGroups[index].temperature;
+}
+void Film::ComputeGroupScale(u_int index)
+{
+	const XYZColor white(colorSpace.ToXYZ(RGBColor(1.f)));
+	bufferGroups[index].scale =
+		colorSpace.ToXYZ(bufferGroups[index].rgbScale) / white;
+	if (bufferGroups[index].temperature > 0.f) {
+		XYZColor factor(BlackbodySPD(bufferGroups[index].temperature));
+		bufferGroups[index].scale *= factor / (factor.Y() * white);
+	}
+	bufferGroups[index].scale *= bufferGroups[index].globalScale;
+}
+
+void Film::GetSampleExtent(int *xstart, int *xend,
+	int *ystart, int *yend) const
+{
+	*xstart = Floor2Int(xPixelStart + .5f - filter->xWidth);
+	*xend   = Floor2Int(xPixelStart + .5f + xPixelCount + filter->xWidth);
+	*ystart = Floor2Int(yPixelStart + .5f - filter->yWidth);
+	*yend   = Floor2Int(yPixelStart + .5f + yPixelCount + filter->yWidth);
+}
+
+void Film::AddSampleCount(float count) {
+	if (haltTime > 0) {
+		// Check if we have met the enough rendering time condition
+		boost::xtime t;
+		boost::xtime_get(&t, boost::TIME_UTC);
+		if (t.sec - creationTime.sec > haltTime)
+			enoughSamplePerPixel = true;
+	}
+
+	for (u_int i = 0; i < bufferGroups.size(); ++i) {
+		bufferGroups[i].numberOfSamples += count;
+
+		// Dade - check if we have enough samples per pixel. The rendering stop
+		// when one of the buffer groups has enough samples (at the moment all
+		// buffer groups have always the same samples count; in the future
+		// it could be better to stop when all buffer groups have enough samples)
+		if ((haltSamplePerPixel > 0) &&
+			(bufferGroups[i].numberOfSamples  >= haltSamplePerPixel * samplePerPass))
+			enoughSamplePerPixel = true;
+	}
+}
+
+void Film::AddSample(Contribution *contrib) {
+	XYZColor xyz = contrib->color;
+	const float alpha = contrib->alpha;
+	const float weight = contrib->variance;
+
+	// Issue warning if unexpected radiance value returned
+	if (!(xyz.Y() >= 0.f) || isinf(xyz.Y())) {
+		if(debug_mode) {
+			std::stringstream ss;
+			ss << "Out of bound intensity in Film::AddSample: "
+			   << xyz.Y() << ", sample discarded";
+			luxError(LUX_LIMIT, LUX_WARNING, ss.str().c_str());
+		}
+		return;
+	}
+
+	if (!(alpha >= 0.f) || isinf(alpha)) {
+		if(debug_mode) {
+			std::stringstream ss;
+			ss << "Out of bound  alpha in Film::AddSample: "
+			   << alpha << ", sample discarded";
+			luxError(LUX_LIMIT, LUX_WARNING, ss.str().c_str());
+		}
+		return;
+	}
+
+	if (!(weight >= 0.f) || isinf(weight)) {
+		if(debug_mode) {
+			std::stringstream ss;
+			ss << "Out of bound  weight in Film::AddSample: "
+			   << weight << ", sample discarded";
+			luxError(LUX_LIMIT, LUX_WARNING, ss.str().c_str());
+		}
+		return;
+	}
+
+	// Reject samples higher than max Y() after warmup period
+	if (warmupComplete && xyz.Y() > maxY)
+		return;
+	else {
+	 	maxY = max(maxY, xyz.Y());
+		++warmupSamples;
+	 	if (warmupSamples >= reject_warmup_samples)
+			warmupComplete = true;
+	}
+
+	if (premultiplyAlpha)
+		xyz *= alpha;
+
+	BufferGroup &currentGroup = bufferGroups[contrib->bufferGroup];
+	Buffer *buffer = currentGroup.getBuffer(contrib->buffer);
+
+	// Compute sample's raster extent
+	float dImageX = contrib->imageX - 0.5f;
+	float dImageY = contrib->imageY - 0.5f;
+	int x0 = Ceil2Int (dImageX - filter->xWidth);
+	int x1 = Floor2Int(dImageX + filter->xWidth);
+	int y0 = Ceil2Int (dImageY - filter->yWidth);
+	int y1 = Floor2Int(dImageY + filter->yWidth);
+	if (x1 < x0 || y1 < y0 || x1 < 0 || y1 < 0)
+		return;
+	// Loop over filter support and add sample to pixel arrays
+	// Precompute $x$ and $y$ filter table offsets
+//	int *ifx = (int *)alloca((x1-x0+1) * sizeof(int));				// TODO - radiance - pre alloc memory in constructor for speedup ?
+	int ifx[32];
+	for (int x = x0; x <= x1; ++x) {
+		float fx = fabsf((x - dImageX) *
+			filter->invXWidth * FILTER_TABLE_SIZE);
+		ifx[x-x0] = min(Floor2Int(fx), FILTER_TABLE_SIZE-1);
+	}
+//	int *ify = (int *)alloca((y1-y0+1) * sizeof(int));				// TODO - radiance - pre alloc memory in constructor for speedup ?
+	int ify[32];
+	for (int y = y0; y <= y1; ++y) {
+		float fy = fabsf((y - dImageY) *
+			filter->invYWidth * FILTER_TABLE_SIZE);
+		ify[y-y0] = min(Floor2Int(fy), FILTER_TABLE_SIZE-1);
+	}
+	float filterNorm = 0.f;
+	for (int y = y0; y <= y1; ++y) {
+		for (int x = x0; x <= x1; ++x) {
+			const int offset = ify[y-y0]*FILTER_TABLE_SIZE + ifx[x-x0];
+			filterNorm += filterTable[offset];
+		}
+	}
+	filterNorm = weight / filterNorm;
+
+	for (u_int y = static_cast<u_int>(max(y0, static_cast<int>(yPixelStart))); y <= static_cast<u_int>(min(y1, static_cast<int>(yPixelStart + yPixelCount - 1))); ++y) {
+		for (u_int x = static_cast<u_int>(max(x0, static_cast<int>(xPixelStart))); x <= static_cast<u_int>(min(x1, static_cast<int>(xPixelStart + xPixelCount - 1))); ++x) {
+			// Evaluate filter value at $(x,y)$ pixel
+			const int offset = ify[y-y0]*FILTER_TABLE_SIZE + ifx[x-x0];
+			const float filterWt = filterTable[offset] * filterNorm;
+			// Update pixel values with filtered sample contribution
+			buffer->Add(x - xPixelStart,y - yPixelStart,
+				xyz, alpha, filterWt);
+			// Update ZBuffer values with filtered zdepth contribution
+			if(use_Zbuf && contrib->zdepth != 0.f)
+				ZBuffer->Add(x - xPixelStart, y - yPixelStart, contrib->zdepth, 1.0f);
+		}
+	}
+
+	CheckWriteOuputInterval();
+}
+
+
+void Film::WriteResumeFilm(const string &filename)
+{
+	// Dade - save the status of the film to the file
+	luxError(LUX_NOERROR, LUX_INFO, (std::string("Writing film status to file ") +
+			filename).c_str());
+
+    std::ofstream filestr(filename.c_str(), std::ios_base::out | std::ios_base::binary);
+	if(!filestr) {
+		std::stringstream ss;
+	 	ss << "Cannot open file '" << filename << "' for writing resume film";
+		luxError(LUX_SYSTEM, LUX_SEVERE, ss.str().c_str());
+
+		return;
+	}
+
+    TransmitFilm(filestr,false,true);
+
+    filestr.close();
+}
+
+
+/**
+ * FLM format
+ * ----------
+ *
+ * Layout:
+ *
+ *   HEADER
+ *   magic_number                  - int   - the magic number number
+ *   version_number                - int   - the version number
+ *   x_resolution                  - int   - the x resolution of the buffers
+ *   y_resolution                  - int   - the y resolution of the buffers
+ *   #buffer_groups                - u_int - the number of lightgroups
+ *   #buffer_configs               - u_int - the number of buffers per light group
+ *   for i in 1:#buffer_configs
+ *     buffer_type                 - int   - the type of the i'th buffer
+ *   #parameters                   - u_int - the number of stored parameters
+ *   for i in 1:#parameters
+ *     param_type                  - int   - the type of the i'th parameter
+ *     param_size                  - int   - the size of the value of the i'th parameter in bytes
+ *     param_id                    - int   - the id of the i'th parameter
+ *     param_index                 - int   - the index of the i'th parameter
+ *     param_value                 - *     - the value of the i'th parameter
+ *
+ *   DATA
+ *   for i in 1:#buffer_groups
+ *     #samples                    - float - the number of samples in the i'th buffer group
+ *     for j in 1:#buffer_configs
+ *       for y in 1:y_resolution
+ *         for x in 1:x_resolution
+ *           X                     - float - the weighted sum of all X values added to the pixel
+ *           Y                     - float - the weighted sum of all Y values added to the pixel
+ *           Z                     - float - the weighted sum of all Z values added to the pixel
+ *           alpha                 - float - the weighted sum of all alpha values added to the pixel
+ *           weight_sum            - float - the sum of al weights of all values added to the pixel
+ *     
+ *
+ * Remarks:
+ *  - data is written as binary little-endian
+ *  - data is gzipped
+ *  - the version is not intended for backward/forward compatibility but just as a check
+ */
+static const int FLM_MAGIC_NUMBER = 0xCEBCD816;
+static const int FLM_VERSION = 0; // should be incremented on each change to the format to allow detecting unsupported FLM data!
+enum FlmParameterType {
+	FLM_PARAMETER_TYPE_FLOAT = 0,
+	FLM_PARAMETER_TYPE_STRING = 1
+};
+
+class FlmParameter {
+public:
+	FlmParameter() {}
+	FlmParameter(Film *aFilm, FlmParameterType aType, luxComponentParameters aParam, u_int aIndex) {
+		type = aType;
+		id = aParam;
+		index = aIndex;
+		switch (type) {
+			case FLM_PARAMETER_TYPE_FLOAT:
+				size = 4;
+				floatValue = static_cast<float>(aFilm->GetParameterValue(aParam, aIndex));
+				break;
+			case FLM_PARAMETER_TYPE_STRING:
+				stringValue = aFilm->GetStringParameterValue(aParam, aIndex);
+				size = stringValue.size();
+				break;
+			default: {
+				std::stringstream ss;
+				ss << "Invalid parameter type (expected value in [0,1], got=" << type << ")";
+				luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str() );
+				break;
+			}
+		}
+	}
+
+	void Set(Film *aFilm) {
+		switch (type) {
+			case FLM_PARAMETER_TYPE_FLOAT:
+				aFilm->SetParameterValue(id, floatValue, index);
+				break;
+			case FLM_PARAMETER_TYPE_STRING:
+				aFilm->SetStringParameterValue(id, stringValue, index);
+				break;
+			default:
+				// ignore invalid type (already reported in constructor)
+				break;
+		}
+	}
+
+	bool Read(std::basic_istream<char> &is, bool isLittleEndian, Film *film ) {
+		int tmpType;
+		tmpType = osReadLittleEndianInt(isLittleEndian, is);
+		type = FlmParameterType(tmpType);
+		if (!is.good()) {
+			luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+			return false;
+		}
+		size = osReadLittleEndianUInt(isLittleEndian, is);
+		if (!is.good()) {
+			luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+			return false;
+		}
+		id = static_cast<luxComponentParameters>(osReadLittleEndianInt(isLittleEndian, is));
+		if (!is.good()) {
+			luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+			return false;
+		}
+		index = osReadLittleEndianUInt(isLittleEndian, is);
+		if (!is.good()) {
+			luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+			return false;
+		}
+		switch (type) {
+			case FLM_PARAMETER_TYPE_FLOAT:
+				if (size != 4) {
+					std::stringstream ss;
+					ss << "Invalid parameter size (expected value for float is 4, received=" << size << ")";
+					luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str() );
+					return false;
+				}
+				floatValue = osReadLittleEndianFloat(isLittleEndian, is);
+				break;
+			case FLM_PARAMETER_TYPE_STRING: {
+				char* chars = new char[size+1];
+				is.read(chars, size);
+				chars[size] = '\0';
+				stringValue = string(chars);
+				delete[] chars;
+				break;
+			}
+			default: {
+				std::stringstream ss;
+				ss << "Invalid parameter type (expected value in [0,1], received=" << tmpType << ")";
+				luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str() );
+				return false;
+			}
+		}
+		return true;
+	}
+	void Write(std::basic_ostream<char> &os, bool isLittleEndian) const {
+		osWriteLittleEndianInt(isLittleEndian, os, type);
+		osWriteLittleEndianUInt(isLittleEndian, os, size);
+		osWriteLittleEndianInt(isLittleEndian, os, id);
+		osWriteLittleEndianUInt(isLittleEndian, os, index);
+		switch (type) {
+			case FLM_PARAMETER_TYPE_FLOAT:
+				osWriteLittleEndianFloat(isLittleEndian, os, floatValue);
+				break;
+			case FLM_PARAMETER_TYPE_STRING:
+				os.write(stringValue.c_str(), size);
+				break;
+			default:
+				// ignore invalid type (already reported in constructor)
+				break;
+		}
+	}
+
+private:
+	FlmParameterType type;
+	u_int size;
+	luxComponentParameters id;
+	u_int index;
+		
+	float floatValue;
+	string stringValue;
+};
+
+class FlmHeader {
+public:
+	FlmHeader() {}
+	bool Read(filtering_stream<input> &in, bool isLittleEndian, Film *film );
+	void Write(std::basic_ostream<char> &os, bool isLittleEndian) const;
+
+	int magicNumber;
+	int versionNumber;
+	u_int xResolution;
+	u_int yResolution;
+	u_int numBufferGroups;
+	u_int numBufferConfigs;
+	vector<int> bufferTypes;
+	u_int numParams;
+	vector<FlmParameter> params;
+};
+
+bool FlmHeader::Read(filtering_stream<input> &in, bool isLittleEndian, Film *film ) {
+	// Read and verify magic number and version
+	magicNumber = osReadLittleEndianInt(isLittleEndian, in);
+	if (!in.good()) {
+		luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+		return false;
+	}
+	if (magicNumber != FLM_MAGIC_NUMBER) {
+		std::stringstream ss;
+		ss << "Invalid FLM magic number (expected=" << FLM_MAGIC_NUMBER 
+			<< ", received=" << magicNumber << ")";
+		luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+		return false;
+	}
+	versionNumber = osReadLittleEndianInt(isLittleEndian, in);
+	if (!in.good()) {
+		luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+		return false;
+	}
+	if (versionNumber != FLM_VERSION) {
+		std::stringstream ss;
+		ss << "Invalid FLM version (expected=" << FLM_VERSION 
+			<< ", received=" << versionNumber << ")";
+		luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+		return false;
+	}
+	// Read and verify the buffer resolution
+	xResolution = osReadLittleEndianUInt(isLittleEndian, in);
+	yResolution = osReadLittleEndianUInt(isLittleEndian, in);
+	if (xResolution == 0 || yResolution == 0 ) {
+		std::stringstream ss;
+		ss << "Invalid resolution (expected positive resolution, received=" << xResolution << "x" << yResolution << ")";
+		luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+		return false;
+	}
+	if (film != NULL &&
+		(xResolution != film->GetXPixelCount() ||
+		yResolution != film->GetYPixelCount())) {
+		std::stringstream ss;
+		ss << "Invalid resolution (expected=" << film->GetXPixelCount() << "x" << film->GetYPixelCount();
+		ss << ", received=" << xResolution << "x" << yResolution << ")";
+		luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+		return false;
+	}
+	// Read and verify #buffer groups and buffer configs
+	numBufferGroups = osReadLittleEndianUInt(isLittleEndian, in);
+	if (!in.good()) {
+		luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+		return false;
+	}
+	if (film != NULL && numBufferGroups != film->GetNumBufferGroups()) {
+		std::stringstream ss;
+		ss << "Invalid number of buffer groups (expected=" << film->GetNumBufferGroups() 
+			<< ", received=" << numBufferGroups << ")";
+		luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+		return false;
+	}
+	numBufferConfigs = osReadLittleEndianUInt(isLittleEndian, in);
+	if (!in.good()) {
+		luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+		return false;
+	}
+	if (film != NULL && numBufferConfigs != film->GetNumBufferConfigs()) {
+		std::stringstream ss;
+		ss << "Invalid number of buffers (expected=" << film->GetNumBufferConfigs()
+			<< ", received=" << numBufferConfigs << ")";
+		luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+		return false;
+	}
+	for (u_int i = 0; i < numBufferConfigs; ++i) {
+		int type;
+		type = osReadLittleEndianInt(isLittleEndian, in);
+		if (!in.good()) {
+			luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+			return false;
+		}
+		if (type < 0 || type >= NUM_OF_BUFFER_TYPES) {
+			std::stringstream ss;
+			ss << "Invalid buffer type for buffer " << i << "(expected number in [0," << NUM_OF_BUFFER_TYPES << "[, received=" << type << ")";
+			luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+			return false;
+		}
+		if (film != NULL && type != film->GetBufferConfig(i).type) {
+			std::stringstream ss;
+			ss << "Invalid buffer type for buffer " << i << " (expected=" << film->GetBufferConfig(i).type
+				<< ", received=" << type << ")";
+			luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+			return false;
+		}
+		bufferTypes.push_back(type);
+	}
+	// Read parameters
+	numParams = osReadLittleEndianUInt(isLittleEndian, in);
+	if (!in.good()) {
+		luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+		return false;
+	}
+	params.reserve(numParams);
+	for(u_int i = 0; i < numParams; ++i) {
+		FlmParameter param;
+		bool ok = param.Read(in, isLittleEndian, film);
+		if (!in.good()) {
+			luxError(LUX_SYSTEM, LUX_ERROR, "Error while receiving film");
+			return false;
+		}
+		if(!ok) {
+			//std::stringstream ss;
+			//ss << "Invalid parameter (id=" << param.id << ", index=" << param.index << ", value=" << param.value << ")";
+			//luxError(LUX_SYSTEM, LUX_ERROR, ss.str().c_str());
+			return false;
+		}
+		params.push_back(param);
+	}
+	return true;
+}
+
+void FlmHeader::Write(std::basic_ostream<char> &os, bool isLittleEndian) const
+{
+	// Write magic number and version
+	osWriteLittleEndianInt(isLittleEndian, os, magicNumber);
+	osWriteLittleEndianInt(isLittleEndian, os, versionNumber);
+	// Write buffer resolution
+	osWriteLittleEndianUInt(isLittleEndian, os, xResolution);
+	osWriteLittleEndianUInt(isLittleEndian, os, yResolution);
+	// Write #buffer groups and buffer configs for verification
+	osWriteLittleEndianUInt(isLittleEndian, os, numBufferGroups);
+	osWriteLittleEndianUInt(isLittleEndian, os, numBufferConfigs);
+	for (u_int i = 0; i < numBufferConfigs; ++i)
+		osWriteLittleEndianInt(isLittleEndian, os, bufferTypes[i]);
+	// Write parameters
+	osWriteLittleEndianUInt(isLittleEndian, os, numParams);
+	for(u_int i = 0; i < numParams; ++i) {
+		params[i].Write(os, isLittleEndian);
+	}
+}
+
+void Film::TransmitFilm(
+        std::basic_ostream<char> &stream,
+        bool clearBuffers,
+		bool transmitParams) 
+{
+    const bool isLittleEndian = osIsLittleEndian();
+
+    std::stringstream ss;
+    ss << "Transmitting film (little endian=" <<(isLittleEndian ? "true" : "false") << ")";
+    luxError(LUX_NOERROR, LUX_DEBUG, ss.str().c_str());
+
+    std::stringstream os(std::stringstream::in | std::stringstream::out | std::stringstream::binary);
+	// Write the header
+	FlmHeader header;
+	header.magicNumber = FLM_MAGIC_NUMBER;
+	header.versionNumber = FLM_VERSION;
+	header.xResolution = xPixelCount;
+	header.yResolution = yPixelCount;
+	header.numBufferGroups = bufferGroups.size();
+	header.numBufferConfigs = bufferConfigs.size();
+	for (u_int i = 0; i < bufferConfigs.size(); ++i)
+		header.bufferTypes.push_back(bufferConfigs[i].type);
+	// Write parameters
+	if (transmitParams) {
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_TONEMAPKERNEL, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_REINHARD_PRESCALE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_REINHARD_POSTSCALE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_REINHARD_BURN, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_LINEAR_SENSITIVITY, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_LINEAR_EXPOSURE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_LINEAR_FSTOP, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_LINEAR_GAMMA, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TM_CONTRAST_YWA, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_X_WHITE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_Y_WHITE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_X_RED, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_Y_RED, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_X_GREEN, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_Y_GREEN, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_X_BLUE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_Y_BLUE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_TORGB_GAMMA, 0));
+
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_UPDATEBLOOMLAYER, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_DELETEBLOOMLAYER, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_BLOOMRADIUS, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_BLOOMWEIGHT, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_VIGNETTING_ENABLED, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_VIGNETTING_SCALE, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_ABERRATION_ENABLED, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_ABERRATION_AMOUNT, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_UPDATEGLARELAYER, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_DELETEGLARELAYER, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_AMOUNT, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_RADIUS, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_BLADES, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_CHIU_ENABLED, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_CHIU_RADIUS, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_CHIU_INCLUDECENTER, 0));
+
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_ENABLED, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_AMPLITUDE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_NBITER, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_SHARPNESS, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_ANISOTROPY, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_ALPHA, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_SIGMA, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_FASTAPPROX, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_GAUSSPREC, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_DL, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_DA, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_INTERP, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_TILE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_BTILE, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_GREYC_THREADS, 0));
+
+		for(u_int i = 0; i < GetNumBufferGroups(); ++i) {
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_LG_SCALE, i));
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_LG_ENABLE, i));
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_LG_SCALE_RED, i));
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_LG_SCALE_GREEN, i));
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_LG_SCALE_BLUE, i));
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_LG_TEMPERATURE, i));
+
+			header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_STRING, LUX_FILM_LG_NAME, i));
+		}
+
+		header.numParams = header.params.size();
+	} else {
+		header.numParams = 0;
+	}
+	header.Write(os, isLittleEndian);
+
+	// Write each buffer group
+	double totNumberOfSamples = 0.;
+	for (u_int i = 0; i < bufferGroups.size(); ++i) {
+		BufferGroup& bufferGroup = bufferGroups[i];
+		// Write number of samples
+		osWriteLittleEndianDouble(isLittleEndian, os, bufferGroup.numberOfSamples);
+
+		// Write each buffer
+		for (u_int j = 0; j < bufferConfigs.size(); ++j) {
+			Buffer* buffer = bufferGroup.getBuffer(j);
+
+			// Write pixels
+			const BlockedArray<Pixel>* pixelBuf = buffer->pixels;
+			for (u_int y = 0; y < pixelBuf->vSize(); ++y) {
+				for (u_int x = 0; x < pixelBuf->uSize(); ++x) {
+					const Pixel &pixel = (*pixelBuf)(x, y);
+					osWriteLittleEndianFloat(isLittleEndian, os, pixel.L.c[0]);
+					osWriteLittleEndianFloat(isLittleEndian, os, pixel.L.c[1]);
+					osWriteLittleEndianFloat(isLittleEndian, os, pixel.L.c[2]);
+					osWriteLittleEndianFloat(isLittleEndian, os, pixel.alpha);
+					osWriteLittleEndianFloat(isLittleEndian, os, pixel.weightSum);
+				}
+			}
+
+			if (clearBuffers) {
+				// Dade - reset the rendering buffer
+				buffer->Clear();
+			}
+		}
+
+		totNumberOfSamples += bufferGroup.numberOfSamples;
+		ss.str("");
+		ss << "Transmitted " << bufferGroup.numberOfSamples << " samples for buffer group " << i <<
+			" (buffer config size: " << bufferConfigs.size() << ")";
+		luxError(LUX_NOERROR, LUX_DEBUG, ss.str().c_str());
+
+		if (clearBuffers) {
+			// Dade - reset the rendering buffer
+			bufferGroup.numberOfSamples = 0;
+		}
+	}
+
+	if (!os.good()) {
+		luxError(LUX_SYSTEM, LUX_SEVERE, "Error while preparing film data for transmission");
+		return;
+	}
+
+	ss.str("");
+	ss << "Transmitted a film with " << totNumberOfSamples << " samples";
+	luxError(LUX_NOERROR, LUX_DEBUG, ss.str().c_str());
+
+	filtering_streambuf<input> in;
+	in.push(gzip_compressor(9));
+	in.push(os);
+	std::streamsize size = boost::iostreams::copy(in, stream);
+	if (!stream.good()) {
+		luxError(LUX_SYSTEM, LUX_SEVERE, "Error while transmitting film");
+		return;
+	}
+
+	ss.str("");
+	ss << "Film transmission done (" << (size / 1024) << " Kbytes sent)";
+	luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+}
+
+
+double Film::UpdateFilm(std::basic_istream<char> &stream) {
+	const bool isLittleEndian = osIsLittleEndian();
+
+	filtering_stream<input> in;
+	in.push(gzip_decompressor());
+	in.push(stream);
+
+	std::stringstream ss;
+	ss << "Receiving film (little endian=" << (isLittleEndian ? "true" : "false") << ")";
+	luxError(LUX_NOERROR, LUX_DEBUG, ss.str().c_str());
+
+	// Read header
+	FlmHeader header;
+	if (!header.Read(in, isLittleEndian, this))
+		return 0.f;
+
+	// Read buffer groups
+	vector<double> bufferGroupNumSamples(bufferGroups.size());
+	vector<BlockedArray<Pixel>*> tmpPixelArrays(bufferGroups.size() * bufferConfigs.size());
+	for (u_int i = 0; i < bufferGroups.size(); i++) {
+		double numberOfSamples;
+		numberOfSamples = osReadLittleEndianDouble(isLittleEndian, in);
+		if (!in.good())
+			break;
+		bufferGroupNumSamples[i] = numberOfSamples;
+
+		// Read buffers
+		for(u_int j = 0; j < bufferConfigs.size(); ++j) {
+			const Buffer* localBuffer = bufferGroups[i].getBuffer(j);
+			// Read pixels
+			BlockedArray<Pixel> *tmpPixelArr = new BlockedArray<Pixel>(
+				localBuffer->xPixelCount, localBuffer->yPixelCount);
+			tmpPixelArrays[i*bufferConfigs.size() + j] = tmpPixelArr;
+			for (u_int y = 0; y < tmpPixelArr->vSize(); ++y) {
+				for (u_int x = 0; x < tmpPixelArr->uSize(); ++x) {
+					Pixel &pixel = (*tmpPixelArr)(x, y);
+					pixel.L.c[0] = osReadLittleEndianFloat(isLittleEndian, in);
+					pixel.L.c[1] = osReadLittleEndianFloat(isLittleEndian, in);
+					pixel.L.c[2] = osReadLittleEndianFloat(isLittleEndian, in);
+					pixel.alpha = osReadLittleEndianFloat(isLittleEndian, in);
+					pixel.weightSum = osReadLittleEndianFloat(isLittleEndian, in);
+				}
+			}
+			if (!in.good())
+				break;
+		}
+		if (!in.good())
+			break;
+
+		ss.str("");
+		ss << "Received " << bufferGroupNumSamples[i] << " samples for buffer group " << i <<
+			" (buffer config size: " << bufferConfigs.size() << ")";
+		luxError(LUX_NOERROR, LUX_DEBUG, ss.str().c_str());
+	}
+
+	// Dade - check for errors
+	double totNumberOfSamples = 0.;
+	double maxTotNumberOfSamples = 0.;
+	if (in.good()) {
+		// Update parameters
+		for (vector<FlmParameter>::iterator it = header.params.begin(); it != header.params.end(); ++it)
+			it->Set(this);
+
+		// Dade - add all received data
+		for (u_int i = 0; i < bufferGroups.size(); ++i) {
+			BufferGroup &currentGroup = bufferGroups[i];
+			for (u_int j = 0; j < bufferConfigs.size(); ++j) {
+				const BlockedArray<Pixel> *receivedPixels = tmpPixelArrays[ i * bufferConfigs.size() + j ];
+				Buffer *buffer = currentGroup.getBuffer(j);
+
+				for (u_int y = 0; y < buffer->yPixelCount; ++y) {
+					for (u_int x = 0; x < buffer->xPixelCount; ++x) {
+						const Pixel &pixel = (*receivedPixels)(x, y);
+						Pixel &pixelResult = (*buffer->pixels)(x, y);
+						pixelResult.L.c[0] += pixel.L.c[0];
+						pixelResult.L.c[1] += pixel.L.c[1];
+						pixelResult.L.c[2] += pixel.L.c[2];
+						pixelResult.alpha += pixel.alpha;
+						pixelResult.weightSum += pixel.weightSum;
+					}
+				}
+			}
+
+			currentGroup.numberOfSamples += bufferGroupNumSamples[i];
+			// Check if we have enough samples per pixel
+			if ((haltSamplePerPixel > 0) &&
+				(currentGroup.numberOfSamples >= haltSamplePerPixel * samplePerPass))
+				enoughSamplePerPixel = true;
+			totNumberOfSamples += bufferGroupNumSamples[i];
+			maxTotNumberOfSamples = max(maxTotNumberOfSamples, bufferGroupNumSamples[i]);
+		}
+
+		if (scene != NULL)
+			scene->numberOfSamplesFromNetwork += maxTotNumberOfSamples;
+
+		ss.str("");
+		ss << "Received film with " << totNumberOfSamples << " samples";
+		luxError(LUX_NOERROR, LUX_DEBUG, ss.str().c_str());
+	} else
+		luxError(LUX_SYSTEM, LUX_ERROR, "IO error while receiving film buffers");
+
+	// Clean up
+	for (u_int i = 0; i < tmpPixelArrays.size(); ++i)
+		delete tmpPixelArrays[i];
+
+	return maxTotNumberOfSamples;
+}
+
+bool Film::LoadResumeFilm(const string &filename)
+{
+	// Read the FLM header
+	std::ifstream stream(filename.c_str(), std::ios_base::in | std::ios_base::binary);
+	filtering_stream<input> in;
+	in.push(gzip_decompressor());
+	in.push(stream);
+	const bool isLittleEndian = osIsLittleEndian();
+	FlmHeader header;
+	bool headerOk = header.Read(in, isLittleEndian, NULL);
+	stream.close();
+	if (!headerOk)
+		return false;
+	xResolution = static_cast<int>(header.xResolution);
+	yResolution = static_cast<int>(header.yResolution);
+	xPixelStart = 0; // by default use full resolution
+	yPixelStart = 0; 
+	xPixelCount = xResolution;
+	yPixelCount = yResolution;
+
+	// Create the buffers (also loads the FLM file)
+	for (u_int i = 0; i < header.numBufferConfigs; ++i)
+		RequestBuffer(BufferType(header.bufferTypes[i]), BUF_FRAMEBUFFER, "");
+
+	vector<string> bufferGroups;
+	for (u_int i = 0; i < header.numBufferGroups; ++i) {
+		std::stringstream ss;
+		ss << "lightgroup #" << (i + 1);
+		bufferGroups.push_back(ss.str());
+	}
+	RequestBufferGroups(bufferGroups);
+	CreateBuffers();
+
+	return true;
+}
+
+
+void Film::getHistogramImage(unsigned char *outPixels, u_int width, u_int height, int options)
+{
 	if (!histogram)
 		histogram = new Histogram();
 	histogram->MakeImage(outPixels, width, height, options);
@@ -494,143 +1492,136 @@ void Film::getHistogramImage(unsigned char *outPixels, int width, int height, in
 
 // Histogram Function Definitions
 
-Histogram::Histogram(){
+Histogram::Histogram()
+{
 	m_buckets = NULL;
-	m_displayGamma = 2.2; //gamma of the display the histogram is viewed on
+	m_displayGamma = 2.2f; //gamma of the display the histogram is viewed on
 
 	//calculate visible plot range
-	float narrowRangeSize = -log(pow(1.f/2,10*1.f/m_displayGamma)); //size of 10 EV zones, display-gamma corrected
-	float scalingFactor = 0.75;
-	m_lowRange = -(1+scalingFactor)*narrowRangeSize;
-	m_highRange = scalingFactor*narrowRangeSize;
+	float narrowRangeSize = -logf(powf(.5f, 10.f / m_displayGamma)); //size of 10 EV zones, display-gamma corrected
+	float scalingFactor = 0.75f;
+	m_lowRange = -(1.f + scalingFactor) * narrowRangeSize;
+	m_highRange = scalingFactor * narrowRangeSize;
 
 	m_bucketNr = 0;
 	m_newBucketNr = 300;
 	CheckBucketNr();
-	for(int i=0;i<m_bucketNr*4;i++) m_buckets[i]=0;
+	for (u_int i = 0; i < m_bucketNr * 4; ++i)
+		m_buckets[i] = 0;
 }
 
-Histogram::~Histogram(){
-	if(m_buckets != NULL) delete[] m_buckets;
+Histogram::~Histogram()
+{
+	delete[] m_buckets;
 }
 
-void Histogram::CheckBucketNr(){
-	if(m_newBucketNr>0){ //if nr of buckets changed recalculate data that depends on it
-		m_bucketNr=m_newBucketNr;
-		m_newBucketNr=-1;
-		if(m_buckets != NULL) delete[] m_buckets;
-		m_buckets = new float[m_bucketNr*4];
+void Histogram::CheckBucketNr()
+{
+	if (m_newBucketNr > 0) { //if nr of buckets changed recalculate data that depends on it
+		m_bucketNr = m_newBucketNr;
+		m_newBucketNr = 0;
+		delete[] m_buckets;
+		m_buckets = new float[m_bucketNr * 4];
 
 		//new bucket size
-		m_bucketSize = (m_highRange-m_lowRange)/m_bucketNr;
+		m_bucketSize = (m_highRange - m_lowRange) / m_bucketNr;
 
 		//calculate EV zone tick positions
-		int bucket, i;
-		float value, zoneValue = 1.0;
-		for (i=0;i<11;i++){
-			value = log(pow(zoneValue,1.f/m_displayGamma));
-			bucket = (value-m_lowRange)/m_bucketSize;
-			bucket = Clamp(bucket,0,m_bucketNr-1);
+		float zoneValue = 1.f;
+		for (u_int i = 0; i < 11; ++i) {
+			float value = logf(powf(zoneValue, 1.f / m_displayGamma));
+			u_int bucket = Clamp(Round2UInt((value - m_lowRange) / m_bucketSize), 0U, m_bucketNr - 1);
 			m_zones[i] = bucket;
-			zoneValue = zoneValue/2;
+			zoneValue /= 2;
 		}
 	}
 }
 
-void Histogram::Calculate(vector<RGBColor> &pixels, unsigned int width, unsigned int height){
-	if(pixels.empty() || width==0 || height==0) return;
-	unsigned int i, j;
-	unsigned int pixelNr=width*height;
+void Histogram::Calculate(vector<RGBColor> &pixels, u_int width, u_int height)
+{
+	if (pixels.empty() || width == 0 || height == 0)
+		return;
+	u_int pixelNr = width * height;
 	float value;
 	boost::mutex::scoped_lock lock(m_mutex);
 
 	CheckBucketNr();
 
 	//empty buckets
-	for(i=0;i<(u_int)m_bucketNr*4;i++) m_buckets[i]=0;
+	for (u_int i = 0; i < m_bucketNr * 4; ++i)
+		m_buckets[i] = 0;
 
 	//fill buckets
-	int bucket;
-	for(i=0;i<pixelNr;i++){
-		for(j=0;j<3;j++){ //each color channel
+	for (u_int i = 0; i < pixelNr; ++i) {
+		for (u_int j = 0; j < 3; ++j){ //each color channel
 			value = pixels[i].c[j];
-			if(value>0){
-				value = log(value);
-				bucket = (value-m_lowRange)/m_bucketSize;
-				bucket = Clamp(bucket,0,m_bucketNr-1);
-				m_buckets[bucket*4+j] += 1;
+			if (value > 0.f) {
+				value = logf(value);
+				u_int bucket = Clamp(Round2UInt((value - m_lowRange) / m_bucketSize), 0U, m_bucketNr - 1);
+				m_buckets[bucket * 4 + j] += 1.f;
 			}
 		}
-		value = ( pixels[i].c[0] + pixels[i].c[1] + pixels[i].c[2] )/3; //brightness
-		if(value>0){
-			value = log(value);
-			bucket = (value-m_lowRange)/m_bucketSize;
-			bucket = Clamp(bucket,0,m_bucketNr-1);
-			m_buckets[bucket*4+3] += 1;
+		value = pixels[i].Y(); //brightness
+		if (value > 0.f) {
+			value = logf(value);
+			u_int bucket = Clamp(Round2UInt((value - m_lowRange) / m_bucketSize), 0U, m_bucketNr - 1);
+			m_buckets[bucket * 4 + 3] += 1.f;
 		}
 	}
-
 }
 
-void Histogram::MakeImage(unsigned char *outPixels, unsigned int canvasW, unsigned int canvasH, int options){
+void Histogram::MakeImage(unsigned char *outPixels, u_int canvasW, u_int canvasH, int options){
 	#define PIXELIDX(x,y,w) ((y)*(w)*3+(x)*3)
 	#define GETMAX(x,y) ((x)>(y)?(x):(y))
-	unsigned int i,x,y,idx;
-	int bucket;
-	unsigned char color;
-	unsigned int borderW = 3; //size of the plot border in pixels
-	unsigned int guideW = 3; //size of the brightness guide bar in pixels
-	unsigned int plotH = canvasH-borderW-(guideW+2)-(borderW-1);
-	unsigned int plotW = canvasW-2*borderW;
-	if(canvasW<50 || canvasH<25) return; //too small
+	if (canvasW < 50 || canvasH < 25)
+		return; //too small
+	const u_int borderW = 3; //size of the plot border in pixels
+	const u_int guideW = 3; //size of the brightness guide bar in pixels
+	const u_int plotH = canvasH - borderW - (guideW + 2) - (borderW - 1);
+	const u_int plotW = canvasW - 2 * borderW;
 	boost::mutex::scoped_lock lock(m_mutex);
-	if(canvasW-2*borderW!=(u_int)m_bucketNr) m_newBucketNr=canvasW-2*borderW;
-	
+	if (canvasW - 2 * borderW != m_bucketNr)
+		m_newBucketNr = canvasW - 2 * borderW;
+
 	//clear drawing area
-	color=64;
-	for(x=0;x<plotW;x++)
-		for(y=0;y<plotH;y++){
-			idx=PIXELIDX(x+borderW,y+borderW,canvasW);
-			outPixels[idx]=color;
-			outPixels[idx+1]=color;
-			outPixels[idx+2]=color;
+	unsigned char color = 64;
+	for (u_int x = 0; x < plotW; ++x) {
+		for (u_int y = 0; y < plotH; ++y) {
+			const u_int idx = PIXELIDX(x + borderW, y + borderW, canvasW);
+			outPixels[idx] = color;
+			outPixels[idx + 1] = color;
+			outPixels[idx + 2] = color;
 		}
+	}
 
 	//transform values to log if needed
 	float *buckets;
-	if(options&LUX_HISTOGRAM_LOG){
-		buckets = new float[m_bucketNr*4];
-		for(i=0;i<(u_int)m_bucketNr*4;i++){
-			buckets[i]=log(1.f+m_buckets[i]);
-		}
-	}else{
-		buckets=m_buckets;
-	}
+	if (options & LUX_HISTOGRAM_LOG) {
+		buckets = new float[m_bucketNr * 4];
+		for (u_int i = 0; i < m_bucketNr * 4; ++i)
+			buckets[i] = logf(1.f + m_buckets[i]);
+	} else
+		buckets = m_buckets;
 
 	//draw histogram bars
-	int barHeight, channel=0;
-	float scale, max, maxExtrL, maxExtrR;
-	switch( options & ( LUX_HISTOGRAM_RGB | LUX_HISTOGRAM_RED | LUX_HISTOGRAM_GREEN | LUX_HISTOGRAM_BLUE | LUX_HISTOGRAM_VALUE | LUX_HISTOGRAM_RGB_ADD ) ){
+	u_int channel = 0;
+	switch (options) {
 		case LUX_HISTOGRAM_RGB: {
 			//get maxima for scaling
-			for(i=1*4,max=0;i<(u_int)(m_bucketNr-1)*4;i++)
-				if(i%4!=3 && buckets[i]>max) max=buckets[i];
-			i=0;
-			maxExtrL = GETMAX(buckets[i*4],GETMAX(buckets[i*4+1],buckets[i*4+2]));
-			i=m_bucketNr-1;
-			maxExtrR = GETMAX(buckets[i*4],GETMAX(buckets[i*4+1],buckets[i*4+2]));
-			if(max>0 || maxExtrL>0 || maxExtrR>0){
+			float max = 0.f;
+			for (u_int i = 4; i < (m_bucketNr - 1) * 4; ++i) {
+				if (i % 4 != 3 && buckets[i] > max)
+					max = buckets[i];
+			}
+			if (max > 0.f) {
 				//draw bars
-				for(x=0;x<plotW;x++){
-					bucket=Clamp((int)(x*m_bucketNr/(plotW-1)), 0, m_bucketNr-1);
-					if(bucket==0 && maxExtrL>max) scale = (float)plotH/maxExtrL;
-					else if(bucket==m_bucketNr-1 && maxExtrR>max) scale = (float)plotH/maxExtrR;
-					else scale = (float)plotH/max;
-					for(channel=0;channel<3;channel++){
-						barHeight=plotH-(u_int)(buckets[bucket*4+channel]*scale+0.5);
-						barHeight=Clamp(barHeight,0,(int)plotH);
-						for(y=barHeight;y<plotH;y++)
-							outPixels[PIXELIDX(x+borderW,y+borderW,canvasW)+channel]=255;
+				for (u_int x = 0; x < plotW; ++x) {
+					const u_int bucket = Clamp(x * m_bucketNr / (plotW - 1), 0U, m_bucketNr - 1);
+					const float scale = plotH / max;
+					for (u_int ch = 0; ch < 3; ++ch) {
+						const u_int barHeight = Clamp(plotH - Round2UInt(buckets[bucket * 4 + ch] * scale), 0U, plotH);
+						for(u_int y = barHeight; y < plotH; ++y)
+							outPixels[PIXELIDX(x + borderW, y + borderW, canvasW) + ch] = 255;
 					}
 				}
 			}
@@ -640,126 +1631,144 @@ void Histogram::MakeImage(unsigned char *outPixels, unsigned int canvasW, unsign
 		case LUX_HISTOGRAM_GREEN: channel++;
 		case LUX_HISTOGRAM_RED: {
 			//get maxima for scaling
-			for(i=1,max=0;i<(u_int)m_bucketNr-1;i++)
-				if(buckets[i*4+channel]>max) max=buckets[i*4+channel];
-			i=0;
-			maxExtrL = buckets[i*4+channel];
-			i=m_bucketNr-1;
-			maxExtrR = buckets[i*4+channel];
-			if(max>0 || maxExtrL>0 || maxExtrR>0){
+			float max = 0.f;
+			for (u_int i = 1; i < m_bucketNr-1; ++i) {
+				if (buckets[i * 4 + channel] > max)
+					max = buckets[i * 4 + channel];
+			}
+			if (max > 0.f) {
 				//draw bars
-				for(x=0;x<plotW;x++){
-					bucket=Clamp((int)(x*m_bucketNr/(plotW-1)), 0, m_bucketNr-1);
-					if(bucket==0 && maxExtrL>max) scale = (float)plotH/maxExtrL;
-					else if(bucket==m_bucketNr-1 && maxExtrR>max) scale = (float)plotH/maxExtrR;
-					else scale = (float)plotH/max;
-					barHeight=plotH-(u_int)(buckets[bucket*4+channel]*scale+0.5);
-					barHeight=Clamp(barHeight,0,(int)plotH);
-					for(y=barHeight;y<plotH;y++){
-						idx=PIXELIDX(x+borderW,y+borderW,canvasW);
-						outPixels[idx]=255;
-						outPixels[idx+1]=255;
-						outPixels[idx+2]=255;
+				for (u_int x = 0; x < plotW; ++x) {
+					const u_int bucket = Clamp(x * m_bucketNr / (plotW - 1), 0U, m_bucketNr - 1);
+					const float scale = plotH / max;
+					const u_int barHeight = Clamp(plotH - Round2UInt(buckets[bucket * 4 + channel] * scale), 0U, plotH);
+					for(u_int y = barHeight; y < plotH; ++y) {
+						const u_int idx = PIXELIDX(x + borderW, y + borderW, canvasW);
+						outPixels[idx] = 255;
+						outPixels[idx + 1] = 255;
+						outPixels[idx + 2] = 255;
 					}
 				}
 			}
-		} break;
+			break;
+		}
 		case LUX_HISTOGRAM_RGB_ADD: {
 			//calculate maxima for scaling
-			for(i=1,max=0; i<(u_int)m_bucketNr-1; i++)
-				if( buckets[i*4]+buckets[i*4+1]+buckets[i*4+2] > max ) max=buckets[i*4]+buckets[i*4+1]+buckets[i*4+2];
-			i=0;
-			maxExtrL = buckets[i*4]+buckets[i*4+1]+buckets[i*4+2];
-			i=m_bucketNr-1;
-			maxExtrR = buckets[i*4]+buckets[i*4+1]+buckets[i*4+2];
-			if(max>0 || maxExtrL>0 || maxExtrR>0){
+			float max = 0.f;
+			for (u_int i = 1; i < m_bucketNr - 1; ++i) {
+				const float val = buckets[i * 4] + buckets[i * 4 + 1] + buckets[i * 4 + 2];
+				if (val > max)
+					max = val;
+			}
+			if (max > 0.f) {
 				//draw bars
-				for(x=0;x<plotW;x++){
-					bucket=Clamp((int)(x*m_bucketNr/(plotW-1)), 0, m_bucketNr-1);
-					if(bucket==0 && maxExtrL>max) scale = (float)plotH/maxExtrL;
-					else if(bucket==m_bucketNr-1 && maxExtrR>max) scale = (float)plotH/maxExtrR;
-					else scale = (float)plotH/max;
-					barHeight=plotH-(u_int)(buckets[bucket*4]*scale+0.5)-(u_int)(buckets[bucket*4+1]*scale+0.5)-(u_int)(buckets[bucket*4+2]*scale+0.5);
-					barHeight=Clamp(barHeight,0,(int)plotH);
-					int newHeight;
-					for(channel=0;channel<3;channel++){
-						newHeight=barHeight+(u_int)(buckets[bucket*4+channel]*scale+0.5);
-						for(y=barHeight;y<(u_int)newHeight;y++)
-							outPixels[PIXELIDX(x+borderW,y+borderW,canvasW)+channel]=255;
-						barHeight=newHeight;
+				for (u_int x = 0; x < plotW; ++x) {
+					const u_int bucket = Clamp(x * m_bucketNr / (plotW - 1), 0U, m_bucketNr - 1);
+					const float scale = plotH / max;
+					u_int barHeight = Clamp(plotH - Round2UInt((buckets[bucket * 4] + buckets[bucket * 4 + 1] + buckets[bucket * 4 + 2]) * scale), 0U, plotH);
+					u_int newHeight = barHeight;
+					for (u_int ch = 0; ch < 3; ++ch) {
+						newHeight += Floor2UInt(buckets[bucket * 4 + ch] * scale + 0.5f);
+						for (u_int y = barHeight; y < newHeight; ++y)
+							outPixels[PIXELIDX(x + borderW, y + borderW, canvasW) + ch] = 255;
+						barHeight = newHeight;
 					}
 				}
 			}
-		} break;
-		default: break;
+			break;
+		}
+		default:
+			break;
 	}
 
-	if(buckets!=m_buckets) delete [] buckets;
+	if (buckets != m_buckets)
+		delete[] buckets;
 
 	//draw brightness guide
-	for(x=0;x<plotW;x++){
-		bucket=Clamp((int)(x*m_bucketNr/(plotW-1)), 0, m_bucketNr-1);
-		for(y=plotH+2;y<plotH+2+guideW;y++){
-			idx=PIXELIDX(x+borderW,y+borderW,canvasW);
-			color=Clamp( expf((bucket*m_bucketSize+m_lowRange))*256.f, 0.f, 255.f ); //no need to gamma-correct, as we're already in display-gamma space
-			if(options&LUX_HISTOGRAM_RED){
-				outPixels[idx]=color;
-				outPixels[idx+1]=0;
-				outPixels[idx+2]=0;
-			}else if(options&LUX_HISTOGRAM_GREEN){
-				outPixels[idx]=0;
-				outPixels[idx+1]=color;
-				outPixels[idx+2]=0;
-			}else if(options&LUX_HISTOGRAM_BLUE){
-				outPixels[idx]=0;
-				outPixels[idx+1]=0;
-				outPixels[idx+2]=color;
-			}else{
-				outPixels[idx]=color;
-				outPixels[idx+1]=color;
-				outPixels[idx+2]=color;
+	for (u_int x = 0; x < plotW; ++x) {
+		u_int bucket = Clamp(x * m_bucketNr / (plotW - 1), 0U, m_bucketNr - 1);
+		for (u_int y = plotH + 2; y < plotH + 2 + guideW; ++y) {
+			const u_int idx = PIXELIDX(x + borderW, y + borderW, canvasW);
+			const unsigned char color = static_cast<unsigned char>(Clamp(expf(bucket * m_bucketSize + m_lowRange) * 256.f, 0.f, 255.f)); //no need to gamma-correct, as we're already in display-gamma space
+			switch (options) {
+				case LUX_HISTOGRAM_RED:
+					outPixels[idx] = color;
+					outPixels[idx + 1] = 0;
+					outPixels[idx + 2] = 0;
+					break;
+				case LUX_HISTOGRAM_GREEN:
+					outPixels[idx] = 0;
+					outPixels[idx + 1] = color;
+					outPixels[idx + 2] = 0;
+					break;
+				case LUX_HISTOGRAM_BLUE:
+					outPixels[idx] = 0;
+					outPixels[idx + 1] = 0;
+					outPixels[idx + 2] = color;
+					break;
+				default:
+					outPixels[idx] = color;
+					outPixels[idx + 1] = color;
+					outPixels[idx + 2] = color;
+					break;
 			}
 		}
 	}
 
 	//draw EV zone markers
-	for(i=0;i<11;i++){
-		switch(i){
-			case 0:  color=128; break;
-			case 10: color=128; break;
-			default: color=0; break;
+	for (u_int i = 0; i < 11; ++i) {
+		switch (i) {
+			case 0:
+				color = 128;
+				break;
+			case 10:
+				color = 128;
+				break;
+			default:
+				color = 0;
+				break;
 		}
-		bucket=m_zones[i];
-		x=Clamp((int)(bucket*plotW/(m_bucketNr-1)), 0, (int)plotW-1);
-		for(y=plotH+2;y<plotH+2+guideW;y++){
-			idx=PIXELIDX(x+borderW,y+borderW,canvasW);
-			outPixels[idx]=color;
-			outPixels[idx+1]=color;
-			outPixels[idx+2]=color;
+		const u_int bucket = m_zones[i];
+		const u_int x = Clamp(bucket * plotW / (m_bucketNr - 1), 0U, plotW - 1);
+		for (u_int y = plotH + 2; y < plotH + 2 + guideW; ++y) {
+			const u_int idx = PIXELIDX(x + borderW, y + borderW, canvasW);
+			outPixels[idx] = color;
+			outPixels[idx + 1] = color;
+			outPixels[idx + 2] = color;
 		}
 	}
 
 	//draw zone boundaries on the plot
-	for(i=0;i<2;i++){
-		switch(i){
-			case 0: bucket=m_zones[0]; break;  //white
-			case 1: bucket=m_zones[10]; break; //black
+	for (u_int i = 0; i < 2; ++i) {
+		u_int bucket;
+		switch (i) {
+			case 0:
+				bucket = m_zones[0];
+				break;  //white
+			default: // In order to suppress a GCC warning
+			case 1:
+				bucket = m_zones[10];
+				break; //black
 		}
-		x=Clamp((int)(bucket*plotW/(m_bucketNr-1)), 0, (int)plotW-1);
-		for(y=0;y<plotH;y++){
-			idx=PIXELIDX(x+borderW,y+borderW,canvasW);
-			if(outPixels[idx]==255 && outPixels[idx+1]==255 && outPixels[idx+2]==255){
-				outPixels[idx]=128;
-				outPixels[idx+1]=128;
-				outPixels[idx+2]=128;
-			}else{
-				if(outPixels[idx]==64) outPixels[idx]=128;
-				if(outPixels[idx+1]==64) outPixels[idx+1]=128;
-				if(outPixels[idx+2]==64) outPixels[idx+2]=128;
+		const u_int x = Clamp(bucket * plotW / (m_bucketNr - 1), 0U, plotW - 1);
+		for (u_int y = 0; y < plotH; ++y) {
+			const u_int idx = PIXELIDX(x + borderW, y + borderW, canvasW);
+			if (outPixels[idx] == 255 &&
+				outPixels[idx + 1] == 255 &&
+				outPixels[idx + 2] == 255) {
+				outPixels[idx] = 128;
+				outPixels[idx + 1] = 128;
+				outPixels[idx + 2] = 128;
+			} else {
+				if (outPixels[idx] == 64)
+					outPixels[idx] = 128;
+				if (outPixels[idx + 1] == 64)
+					outPixels[idx + 1] = 128;
+				if (outPixels[idx + 2] == 64)
+					outPixels[idx + 2] = 128;
 			}
 		}
 	}
-
 }
 
 

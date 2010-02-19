@@ -30,13 +30,14 @@
 #include "light.h"
 #include "paramset.h"
 #include "dynload.h"
-#include "disk.h"
+#include "shapes/disk.h"
 #include "error.h"
+#include "epsilon.h"
 
 using namespace lux;
 
-#define honeyRad 0.866025403
-#define radIndex 57.2957795
+#define honeyRad 0.866025403f
+#define radIndex 57.2957795f
 
 class PerspectiveBxDF : public BxDF
 {
@@ -46,20 +47,20 @@ public:
 		BxDF(BxDFType(BSDF_REFLECTION | BSDF_DIFFUSE)), hasLens(lens),
 		FocalDistance(FD), fov(f), xStart(xS), xEnd(xE),
 		yStart(yS), yEnd(yE), Area(A),
-		p(pL), RasterToCamera(R2C) {}
+		p(pL), RasterToCamera(R2C) { }
 	virtual ~PerspectiveBxDF() { }
 	virtual void f(const TsPack *tspack, const Vector &wo, const Vector &wi, SWCSpectrum *const f) const
 	{
-		Vector wo0(wo);
-		wo0.y = -wo0.y;//FIXME
+		if (wo.z <= 0.f)
+			return;
+		Vector wo0(wo.x, -wo.y, wo.z); //FIXME: inverted Y axis
 		if (hasLens) {
-			wo0 *= FocalDistance / wo.z;
-			wo0 += Vector(p.x, p.y, p.z);
+			wo0 += Vector(p.x, p.y, p.z) * (wo.z / FocalDistance);
+			wo0 = Normalize(wo0);
 		}
-		const float cos = Normalize(wo0).z;
+		const float cos = wo0.z;
 		const float cos2 = cos * cos;
-		wo0 *= RasterToCamera(Point(0, 0, 0)).z / wo0.z;
-		Point p0(RasterToCamera.GetInverse()(Point(wo0.x, wo0.y, wo0.z)));
+		const Point p0(RasterToCamera.GetInverse()(Point(wo0.x, wo0.y, wo0.z)));
 		if (p0.x < xStart || p0.x >= xEnd || p0.y < yStart || p0.y >= yEnd)
 			return;
 		*f += SWCSpectrum(1.f / (Area * cos2 * cos2));
@@ -68,33 +69,32 @@ public:
 		SWCSpectrum *const f, float *pdf, float *pdfBack = NULL, bool reverse = false) const
 	{
 		Point pS(RasterToCamera(Point(u1, u2, 0.f)));
-		*wi = Vector(pS.x, pS.y, pS.z);
-		const float cos = Normalize(*wi).z;
+		*wi = Normalize(Vector(pS.x, pS.y, pS.z));
+		const float cos = wi->z;
 		const float cos2 = cos * cos;
 		if (hasLens) {
-			Point pF(Point(0, 0, 0) + *wi * (FocalDistance / wi->z));
-			*wi = pF - p;
+			*wi -= Vector(p.x, p.y, p.z) * (wi->z / FocalDistance);
+			*wi = Normalize(*wi);
 		}
-		*wi = Normalize(*wi);
 		wi->y = -wi->y;//FIXME
 		*pdf = 1.f / (Area * cos2 * cos);
 		if (pdfBack)
-			*pdfBack = *pdf;//FIXME
+			*pdfBack = 0.f;
 		*f = SWCSpectrum(1.f / (Area * cos2 * cos2));
 		return true;
 	}
 	virtual float Pdf(const TsPack *tspack, const Vector &wi, const Vector &wo) const
 	{
-		Vector wo0(wo);
-		wo0.y = -wo0.y;//FIXME
+		if (wo.z <= 0.f)
+			return 0.f;
+		Vector wi0(wi.x, -wi.y, wi.z); //FIXME: inverted Y axis
 		if (hasLens) {
-			wo0 *= FocalDistance / wo.z;
-			wo0 += Vector(p.x, p.y, p.z);
+			wi0 += Vector(p.x, p.y, p.z) * (wi.z / FocalDistance);
+			wi0 = Normalize(wi0);
 		}
-		const float cos = Normalize(wo0).z;
+		const float cos = wi0.z;
 		const float cos2 = cos * cos;
-		wo0 *= RasterToCamera(Point(0, 0, 0)).z / wo0.z;
-		Point p0(RasterToCamera.GetInverse()(Point(wo0.x, wo0.y, wo0.z)));
+		const Point p0(RasterToCamera.GetInverse()(Point(wi0.x, wi0.y, wi0.z)));
 		if (p0.x < xStart || p0.x >= xEnd || p0.y < yStart || p0.y >= yEnd)
 			return 0.f;
 		else 
@@ -135,7 +135,7 @@ PerspectiveCamera::
 		posPdf = 1.f;
 
 	R = 1.f;
-	float templength = R * tan(fov / 2.f) * 2.f;	
+	float templength = R * tanf(fov / 2.f) * 2.f;	
 	int xS, xE, yS, yE;
 	f->GetSampleExtent(&xS, &xE, &yS, &yE);
 	xStart = xS;
@@ -147,7 +147,7 @@ PerspectiveCamera::
 	yPixelHeight = templength * (Screen[3] - Screen[2]) / 2.f *
 		(yEnd - yStart) / f->yResolution;
 	Apixel = xPixelWidth * yPixelHeight;
-	RasterToCameraBidir = Perspective(fov1, DEFAULT_EPSILON_STATIC, INFINITY).GetInverse() * RasterToScreen;
+	RasterToCameraBidir = Perspective(fov1, 1.f, 2.f).GetInverse() * RasterToScreen;
 	WorldToRasterBidir = RasterToCameraBidir.GetInverse() * WorldToCamera;
 }
 
@@ -190,11 +190,9 @@ void PerspectiveCamera::AutoFocus(Scene* scene)
 		if (scene->Intersect(ray, &isect))
 			FocalDistance = ray.maxt;
 		else
-			luxError(LUX_NOERROR, LUX_WARNING, "Unable to define the Autofocus focal distance");
+			LOG(LUX_WARNING,LUX_NOERROR)<<"Unable to define the Autofocus focal distance";
 
-		ss.str("");
-		ss << "Autofocus focal distance: " << FocalDistance;
-		luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+		LOG(LUX_INFO,LUX_NOERROR)<<"Autofocus focal distance: " << FocalDistance;
 	}
 }
 
@@ -247,8 +245,8 @@ bool PerspectiveCamera::Sample_W(const TsPack *tspack, const Scene *scene, float
 	}
 	Point ps = CameraToWorld(psC);
 	DifferentialGeometry dg(ps, normal, CameraToWorld(Vector(1, 0, 0)), CameraToWorld(Vector(0, 1, 0)), Normal(0, 0, 0), Normal(0, 0, 0), 0, 0, NULL);
-	*bsdf = BSDF_ALLOC(tspack, SingleBSDF)(dg, normal,
-		BSDF_ALLOC(tspack, PerspectiveBxDF)(LensRadius > 0.f, FocalDistance,
+	*bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dg, normal,
+		ARENA_ALLOC(tspack->arena, PerspectiveBxDF)(LensRadius > 0.f, FocalDistance,
 		fov, Apixel, psC, RasterToCameraBidir,
 		xStart, xEnd, yStart, yEnd));
 	*pdf = posPdf;
@@ -265,13 +263,13 @@ bool PerspectiveCamera::Sample_W(const TsPack *tspack, const Scene *scene, const
 	}
 	Point ps = CameraToWorld(psC);
 	DifferentialGeometry dg(ps, normal, CameraToWorld(Vector(1, 0, 0)), CameraToWorld(Vector(0, 1, 0)), Normal(0, 0, 0), Normal(0, 0, 0), 0, 0, NULL);
-	*bsdf = BSDF_ALLOC(tspack, SingleBSDF)(dg, normal,
-		BSDF_ALLOC(tspack, PerspectiveBxDF)(LensRadius > 0.f, FocalDistance,
+	*bsdf = ARENA_ALLOC(tspack->arena, SingleBSDF)(dg, normal,
+		ARENA_ALLOC(tspack->arena, PerspectiveBxDF)(LensRadius > 0.f, FocalDistance,
 		fov, Apixel, psC, RasterToCameraBidir,
 		xStart, xEnd, yStart, yEnd));
 	*pdf = posPdf;
 	*pdfDirect = posPdf;
-	visibility->SetSegment(p, ps, tspack->time);
+	visibility->SetSegment(ps, p, tspack->time, true);
 	*We = SWCSpectrum(posPdf);
 	return true;
 }
@@ -285,11 +283,12 @@ BBox PerspectiveCamera::Bounds() const
 	return bound;
 }
 
-bool PerspectiveCamera::GetSamplePosition(const Point &p, const Vector &wi, float distance, float *x, float *y) const
+bool PerspectiveCamera::GetSamplePosition(const Point &p, const Vector &wi,
+	float distance, float *x, float *y) const
 {
 	Vector direction(normal);
 	const float cosi = Dot(wi, direction);
-	if (cosi <= 0.f || (distance != -1.f && (distance * cosi < ClipHither || distance * cosi > ClipYon)))
+	if (cosi <= 0.f || (!isinf(distance) && (distance * cosi < ClipHither || distance * cosi > ClipYon)))
 		return false;
 	if (LensRadius > 0.f) {
 		Point pFC(p + wi * (FocalDistance / Dot(wi, direction)));
@@ -324,15 +323,15 @@ void PerspectiveCamera::SampleLens(float u1, float u2, float *dx, float *dy) con
 	static const float index = subDiv / radIndex;
 	static const float honeyRadius = cosf(index);
 
-	int temp = rand() % (shape * 2); //FIXME don't use rand()
+	int temp = min(Floor2Int(2.f * shape * u2), 2 * shape - 1);
 
 	float theta;
 	if (shape == 3 && temp % 2 == 0)
-		theta = 2.f * M_PI * (temp + sqrtf(u2)) / (shape * 2);
+		theta = 2.f * M_PI * (temp + sqrtf(2.f * shape * u2 - temp)) / (shape * 2);
 	else
-		theta = 2.f * M_PI * (temp + u2) / (shape * 2);
+		theta = 2.f * M_PI * u2;
 
-	const int sector = theta / index;
+	const int sector = Floor2Int(theta / index);
 	const float rho = (sector % 2 == 0) ? theta - sector * index :
 		(sector - 1) * index - theta;
 
@@ -375,9 +374,7 @@ Camera* PerspectiveCamera::CreateCamera(const Transform &world2camStart, const T
 	if (shutterdistribution == "uniform") shutterdist = 0;
 	else if (shutterdistribution == "gaussian") shutterdist = 1;
 	else {
-		std::stringstream ss;
-		ss<<"Distribution  '"<<shutterdistribution<<"' for perspective camera shutter sampling unknown. Using \"uniform\".";
-		luxError(LUX_BADTOKEN,LUX_WARNING,ss.str().c_str());
+		LOG(LUX_WARNING,LUX_BADTOKEN)<<"Distribution  '"<<shutterdistribution<<"' for perspective camera shutter sampling unknown. Using \"uniform\".";
 		shutterdist = 0;
 	}
 
@@ -399,7 +396,7 @@ Camera* PerspectiveCamera::CreateCamera(const Transform &world2camStart, const T
 		screen[2] = -1.f / frame;
 		screen[3] =  1.f / frame;
 	}
-	int swi;
+	u_int swi;
 	const float *sw = params.FindFloat("screenwindow", &swi);
 	if (sw && swi == 4)
 		memcpy(screen, sw, 4*sizeof(float));
@@ -413,9 +410,7 @@ Camera* PerspectiveCamera::CreateCamera(const Transform &world2camStart, const T
 	else if (dist == "gaussian") distribution = 3;
 	else if (dist == "inverse gaussian") distribution = 4;
 	else {
-		std::stringstream ss;
-		ss<<"Distribution  '"<<dist<<"' for perspective camera DOF sampling unknown. Using \"uniform\".";
-		luxError(LUX_BADTOKEN,LUX_WARNING,ss.str().c_str());
+		LOG(LUX_WARNING,LUX_BADTOKEN)<<"Distribution  '"<<dist<<"' for perspective camera DOF sampling unknown. Using \"uniform\".";
 		distribution = 0;
 	}
 

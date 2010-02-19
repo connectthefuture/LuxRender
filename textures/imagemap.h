@@ -22,9 +22,11 @@
 
 // imagemap.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
 #include "mipmap.h"
 #include "imagereader.h"
+#include "equalspd.h"
 #include "paramset.h"
 #include "error.h"
 #include <map>
@@ -59,6 +61,8 @@ public:
 		mapping->Map(dg, &s, &t, &dsdx, &dtdx, &dsdy, &dtdy);
 		return mipmap->Lookup(s, t, dsdx, dtdx, dsdy, dtdy);
 	};
+	virtual float Y() const { return EqualSPD(1.f).Y(); }
+	virtual float Filter() const { return mipmap->Lookup(.5f, .5f, .5f); }
 	
 	u_int getMemoryUsed() const {
 		if (mipmap)
@@ -72,8 +76,7 @@ public:
 			mipmap->discardMipmaps(n);
 	}
 	
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	//static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const ParamSet &tp);
 
 private:
 	// ImageFloatTexture Private Methods
@@ -120,6 +123,7 @@ public:
 		mapping->Map(dg, &s, &t, &dsdx, &dtdx, &dsdy, &dtdy);
 		return SWCSpectrum(tspack, mipmap->Lookup(s, t, dsdx, dtdx, dsdy, dtdy));
 	};
+	virtual float Y() const { return EqualSPD(1.f).Y(); }
 	
 	u_int getMemoryUsed() const {
 		if (mipmap)
@@ -133,8 +137,7 @@ public:
 			mipmap->discardMipmaps(n);
 	}
 	
-	//static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 
 private:
 	// ImageSpectrumTexture Private Methods

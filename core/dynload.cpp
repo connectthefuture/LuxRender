@@ -28,15 +28,13 @@
 #include "error.h"
 #include "shape.h"
 #include "material.h"
+#include "texture.h"
 
 namespace lux {
 
 static void LoadError(const string &type, const string &name)
 {
-	std::stringstream ss;
-	ss << "Static loading of " << type << " '" << name << "' failed.";
-	luxError(LUX_BUG, LUX_ERROR, ss.str().c_str());
-
+	LOG(LUX_ERROR,LUX_BUG)<< "Static loading of " << type << " '" << name << "' failed.";
 }
 
 boost::shared_ptr<Shape> MakeShape(const string &name,
@@ -55,7 +53,7 @@ boost::shared_ptr<Shape> MakeShape(const string &name,
 }
 
 boost::shared_ptr<Material> MakeMaterial(const string &name,
-	const Transform &mtl2world, const TextureParams &mp)
+	const Transform &mtl2world, const ParamSet &mp)
 {
 	if (DynamicLoader::registeredMaterials().find(name) !=
 		DynamicLoader::registeredMaterials().end()) {
@@ -71,7 +69,7 @@ boost::shared_ptr<Material> MakeMaterial(const string &name,
 }
 
 boost::shared_ptr<Texture<float> > MakeFloatTexture(const string &name,
-	const Transform &tex2world, const TextureParams &tp)
+	const Transform &tex2world, const ParamSet &tp)
 {
 	if (DynamicLoader::registeredFloatTextures().find(name) !=
 		DynamicLoader::registeredFloatTextures().end()) {
@@ -85,7 +83,7 @@ boost::shared_ptr<Texture<float> > MakeFloatTexture(const string &name,
 }
 
 boost::shared_ptr<Texture<SWCSpectrum> > MakeSWCSpectrumTexture(const string &name,
-	const Transform &tex2world, const TextureParams &tp)
+	const Transform &tex2world, const ParamSet &tp)
 {
 	if (DynamicLoader::registeredSWCSpectrumTextures().find(name) !=
 		DynamicLoader::registeredSWCSpectrumTextures().end()) {
@@ -98,13 +96,27 @@ boost::shared_ptr<Texture<SWCSpectrum> > MakeSWCSpectrumTexture(const string &na
 	return boost::shared_ptr<Texture<SWCSpectrum> >();
 }
 
+boost::shared_ptr<Texture<const Fresnel *> > MakeFresnelTexture(const string &name,
+	const Transform &tex2world, const ParamSet &tp)
+{
+	if (DynamicLoader::registeredFresnelTextures().find(name) !=
+		DynamicLoader::registeredFresnelTextures().end()) {
+		boost::shared_ptr<Texture<const Fresnel *> > ret(DynamicLoader::registeredFresnelTextures()[name](tex2world, tp));
+		tp.ReportUnused();
+		return ret;
+	}
+
+	LoadError("fresnel texture", name);
+	return boost::shared_ptr<Texture<const Fresnel *> >();
+}
+
 Light *MakeLight(const string &name,
-	const Transform &light2world, const ParamSet &paramSet, const TextureParams &tp)
+	const Transform &light2world, const ParamSet &paramSet)
 {
 	if (DynamicLoader::registeredLights().find(name) !=
 		DynamicLoader::registeredLights().end()) {
 		Light *ret = DynamicLoader::registeredLights()[name](light2world,
-			paramSet, tp);
+			paramSet);
 		paramSet.ReportUnused();
 		return ret;
 	}
@@ -114,14 +126,14 @@ Light *MakeLight(const string &name,
 }
 
 AreaLight *MakeAreaLight(const string &name,
-	const Transform &light2world, const ParamSet &paramSet, const TextureParams &tp,
+	const Transform &light2world, const ParamSet &paramSet,
 	const boost::shared_ptr<Primitive> &prim)
 {
 	if (DynamicLoader::registeredAreaLights().find(name) !=
 		DynamicLoader::registeredAreaLights().end()) {
 		AreaLight *ret =
 			DynamicLoader::registeredAreaLights()[name](light2world,
-				paramSet, tp, prim);
+				paramSet, prim);
 		paramSet.ReportUnused();
 		return ret;
 	}
@@ -130,12 +142,12 @@ AreaLight *MakeAreaLight(const string &name,
 	return NULL;
 }
 
-VolumeRegion *MakeVolumeRegion(const string &name,
+Region *MakeVolumeRegion(const string &name,
 	const Transform &volume2world, const ParamSet &paramSet)
 {
 	if (DynamicLoader::registeredVolumeRegions().find(name) !=
 		DynamicLoader::registeredVolumeRegions().end()) {
-		VolumeRegion *ret =
+		Region *ret =
 			DynamicLoader::registeredVolumeRegions()[name](volume2world,
 				paramSet);
 		paramSet.ReportUnused();
@@ -143,6 +155,22 @@ VolumeRegion *MakeVolumeRegion(const string &name,
 	}
 
 	LoadError("volume region", name);
+	return NULL;
+}
+
+Volume *MakeVolume(const string &name,
+	const Transform &volume2world, const ParamSet &paramSet)
+{
+	if (DynamicLoader::registeredVolumes().find(name) !=
+		DynamicLoader::registeredVolumes().end()) {
+		Volume *ret =
+			DynamicLoader::registeredVolumes()[name](volume2world,
+				paramSet);
+		paramSet.ReportUnused();
+		return ret;
+	}
+
+	LoadError("volume", name);
 	return NULL;
 }
 
@@ -177,7 +205,8 @@ VolumeIntegrator *MakeVolumeIntegrator(const string &name,
 }
 
 boost::shared_ptr<Aggregate> MakeAccelerator(const string &name,
-	const vector<boost::shared_ptr<Primitive> > &prims, const ParamSet &paramSet)
+	const vector<boost::shared_ptr<Primitive> > &prims,
+	const ParamSet &paramSet)
 {
 	if (DynamicLoader::registeredAccelerators().find(name) !=
 		DynamicLoader::registeredAccelerators().end()) {
@@ -300,6 +329,11 @@ map<string, DynamicLoader::CreateSWCSpectrumTexture> &DynamicLoader::registeredS
 	static map<string, DynamicLoader::CreateSWCSpectrumTexture> *Map = new map<string, DynamicLoader::CreateSWCSpectrumTexture>;
 	return *Map;
 }
+map<string, DynamicLoader::CreateFresnelTexture> &DynamicLoader::registeredFresnelTextures()
+{
+	static map<string, DynamicLoader::CreateFresnelTexture> *Map = new map<string, DynamicLoader::CreateFresnelTexture>;
+	return *Map;
+}
 map<string, DynamicLoader::CreateLight> &DynamicLoader::registeredLights()
 {
 	static map<string, DynamicLoader::CreateLight> *Map = new map<string, DynamicLoader::CreateLight>;
@@ -313,6 +347,11 @@ map<string, DynamicLoader::CreateAreaLight> &DynamicLoader::registeredAreaLights
 map<string, DynamicLoader::CreateVolumeRegion> &DynamicLoader::registeredVolumeRegions()
 {
 	static map<string, DynamicLoader::CreateVolumeRegion> *Map = new map<string, DynamicLoader::CreateVolumeRegion>;
+	return *Map;
+}
+map<string, DynamicLoader::CreateVolume> &DynamicLoader::registeredVolumes()
+{
+	static map<string, DynamicLoader::CreateVolume> *Map = new map<string, DynamicLoader::CreateVolume>;
 	return *Map;
 }
 map<string, DynamicLoader::CreateSurfaceIntegrator> &DynamicLoader::registeredSurfaceIntegrators()

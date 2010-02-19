@@ -25,36 +25,28 @@
 // rgbillum.h*
 #include "lux.h"
 #include "color.h"
-#include "spectrum.h"
 #include "spd.h"
 
 namespace lux
 {
 
 // illuminant SPD, from RGB color, using smits conversion, reconstructed using linear interpolation
-  class RGBIllumSPD : public SPD {
-  public:
-    RGBIllumSPD() : SPD() {
-	  init(RGBColor(1.f));
-    }
+class RGBIllumSPD : public SPD {
+public:
+	RGBIllumSPD() : SPD() { init(RGBColor(1.f)); }
 
-    RGBIllumSPD(RGBColor s) : SPD() {
-      init(s);
-    }
+	RGBIllumSPD(const RGBColor &s) : SPD() { init(s); }
 
-    virtual ~RGBIllumSPD() {}
+	virtual ~RGBIllumSPD() {}
 
-  protected:
-	  void AddWeighted(float w, float *c) {
-		  for(int i=0; i<nSamples; i++) {
+protected:
+	void AddWeighted(float w, float *c) {
+		for(u_int i = 0; i < nSamples; ++i)
 			samples[i] += c[i] * w;
-		  }
-	  }
+	}
 
-	void init(RGBColor s);
-
-  private:   
-  };
+	void init(const RGBColor &s);
+};
 
 }//namespace lux
 

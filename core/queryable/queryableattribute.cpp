@@ -20,35 +20,20 @@
  *   Lux Renderer website : http://www.luxrender.net                       *
  ***************************************************************************/
 
-#include "shape.h"
-#include "mc.h"
-#include "quadrilateral.h"
+// queryable.cpp
+#include "queryableattribute.h"
 
 namespace lux
 {
 
-// Quad Declarations
-class Quad : public Shape {
-public:
-	// Quad Public Methods
-	Quad(const Transform &o2w, bool ro, int nq, int nv, 
-		const int *vi, const Point *P);
-	virtual ~Quad();
-	virtual BBox ObjectBound() const;
-	virtual BBox WorldBound() const;
-	virtual bool Intersect(const Ray &ray, float *tHit,
-	               DifferentialGeometry *dg) const;
-	virtual bool IntersectP(const Ray &ray) const;
-	virtual float Area() const;
-	virtual Point Sample(float u1, float u2, float u3, Normal *Ns) const {
-		return quad->Sample(u1, u2, u3, Ns);
-	}
-	
-	static Shape* CreateShape(const Transform &o2w, bool reverseOrientation, const ParamSet &params);
-private:
-	// Quad Private Data	
-	QuadMesh *mesh;
-	Quadrilateral *quad;
-};
+void QueryableAttribute::ReadOnlyFloatError(float f)
+{
+	LOG(LUX_ERROR,LUX_BADTOKEN)<<"Queryable attributes : cannot change read only float value :"<<f;
+}
+
+void QueryableAttribute::ReadOnlyIntError(int i)
+{
+	LOG(LUX_ERROR,LUX_BADTOKEN)<<"Queryable attributes : cannot change read only int value :"<<i;
+}
 
 }//namespace lux

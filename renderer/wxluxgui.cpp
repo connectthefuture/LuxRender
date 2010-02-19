@@ -29,23 +29,19 @@
 #include <sstream>
 #include <clocale>
 
-#include "lux.h"
 #include "api.h"
-#include "error.h"
 
-#include "wx/app.h"
-#include "wx/filedlg.h"
-#include "wx/filename.h"
-#include "wx/dcbuffer.h"
-#include "wx/splash.h"
-#include "wx/clipbrd.h" // CF
+#include <wx/app.h>
+#include <wx/filedlg.h>
+#include <wx/filename.h>
+#include <wx/dcbuffer.h>
+#include <wx/splash.h>
+#include <wx/clipbrd.h> // CF
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include "wxluxgui.h"
 #include "wxglviewer.h"
 #include "wximages.h"
-
-using namespace lux;
 
 /*** LuxGui ***/
 
@@ -110,7 +106,7 @@ using namespace lux;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-DEFINE_LOCAL_EVENT_TYPE(lux::wxEVT_LUX_ERROR)
+DEFINE_LOCAL_EVENT_TYPE(wxEVT_LUX_ERROR)
 #if defined(__WXOSX_COCOA__) // wx 2.9 and later //
 wxDEFINE_EVENT(EVT_LUX_PARSEERROR, wxCommandEvent);
 wxDEFINE_EVENT(EVT_LUX_FINISHED, wxCommandEvent);
@@ -118,11 +114,11 @@ wxDEFINE_EVENT(EVT_LUX_TONEMAPPED, wxCommandEvent);
 wxDEFINE_EVENT(EVT_LUX_FLMLOADERROR, wxCommandEvent);
 wxDEFINE_EVENT(EVT_LUX_SAVEDFLM, wxCommandEvent);
 #else
-DEFINE_LOCAL_EVENT_TYPE(lux::wxEVT_LUX_PARSEERROR)
-DEFINE_LOCAL_EVENT_TYPE(lux::wxEVT_LUX_FINISHED)
-DEFINE_LOCAL_EVENT_TYPE(lux::wxEVT_LUX_TONEMAPPED)
-DEFINE_LOCAL_EVENT_TYPE(lux::wxEVT_LUX_FLMLOADERROR)
-DEFINE_LOCAL_EVENT_TYPE(lux::wxEVT_LUX_SAVEDFLM)
+DEFINE_LOCAL_EVENT_TYPE(wxEVT_LUX_PARSEERROR)
+DEFINE_LOCAL_EVENT_TYPE(wxEVT_LUX_FINISHED)
+DEFINE_LOCAL_EVENT_TYPE(wxEVT_LUX_TONEMAPPED)
+DEFINE_LOCAL_EVENT_TYPE(wxEVT_LUX_FLMLOADERROR)
+DEFINE_LOCAL_EVENT_TYPE(wxEVT_LUX_SAVEDFLM)
 #endif
 
 BEGIN_EVENT_TABLE(LuxGui, wxFrame)
@@ -136,11 +132,11 @@ BEGIN_EVENT_TABLE(LuxGui, wxFrame)
 	EVT_COMMAND   (wxID_ANY, EVT_LUX_FLMLOADERROR, LuxGui::OnCommand)
 	EVT_COMMAND   (wxID_ANY, EVT_LUX_SAVEDFLM, LuxGui::OnCommand)
 #else
-	EVT_COMMAND   (wxID_ANY, lux::wxEVT_LUX_TONEMAPPED, LuxGui::OnCommand)
-	EVT_COMMAND   (wxID_ANY, lux::wxEVT_LUX_PARSEERROR, LuxGui::OnCommand)
-	EVT_COMMAND   (wxID_ANY, lux::wxEVT_LUX_FINISHED, LuxGui::OnCommand)
-	EVT_COMMAND   (wxID_ANY, lux::wxEVT_LUX_FLMLOADERROR, LuxGui::OnCommand)
-	EVT_COMMAND   (wxID_ANY, lux::wxEVT_LUX_SAVEDFLM, LuxGui::OnCommand)
+	EVT_COMMAND   (wxID_ANY, wxEVT_LUX_TONEMAPPED, LuxGui::OnCommand)
+	EVT_COMMAND   (wxID_ANY, wxEVT_LUX_PARSEERROR, LuxGui::OnCommand)
+	EVT_COMMAND   (wxID_ANY, wxEVT_LUX_FINISHED, LuxGui::OnCommand)
+	EVT_COMMAND   (wxID_ANY, wxEVT_LUX_FLMLOADERROR, LuxGui::OnCommand)
+	EVT_COMMAND   (wxID_ANY, wxEVT_LUX_SAVEDFLM, LuxGui::OnCommand)
 #endif
 
 #if defined (__WXMSW__) ||  defined (__WXGTK__)
@@ -155,6 +151,14 @@ END_EVENT_TABLE()
 #define wxEVT_LUX_FLMLOADERROR EVT_LUX_FLMLOADERROR
 #define wxEVT_LUX_SAVEDFLM EVT_LUX_SAVEDFLM
 #endif
+
+template<class T> inline T Clamp(T val, T low, T high) {
+	return val > low ? (val < high ? val : high) : low;
+}
+
+inline int Floor2Int(float val) {
+	return static_cast<int>(floorf(val));
+}
 
 // Dade - global variable used by LuxGuiErrorHandler()
 bool copyLog2Console = false;
@@ -3511,9 +3515,16 @@ void LuxGui::OnError(wxLuxErrorEvent &event) {
 	// Feature request #584: Show a dialog in case of warning/error
 	if (m_showWarningDialog && severity > LUX_INFO) {
 		m_showWarningDialog = false;
-		wxMessageBox(wxT("There was an abnormal condition reported. Please, check the Log tab for more information."),
-			wxT("LuxRender Notification"),
-			wxOK | (severity == LUX_WARNING ? wxICON_EXCLAMATION : wxICON_ERROR), this);
+		if (severity < LUX_SEVERE) {
+			wxMessageBox(wxT("There was an abnormal condition reported. Please, check the Log tab for more information."),
+				wxT("LuxRender Notification"),
+				wxOK | (severity == LUX_WARNING ? wxICON_EXCLAMATION : wxICON_ERROR), this);
+
+		} else {
+			wxMessageBox(wxT("There was severe error reported. Please, check the Log tab for more information."),
+				wxT("LuxRender Error"),
+				wxOK | wxICON_STOP, this);
+		}
 	}
 }
 
@@ -3627,7 +3638,6 @@ void LuxGui::OnCommand(wxCommandEvent &event) {
 		m_progDialog = NULL;
 		m_loadTimer->Stop();
 
-		wxMessageBox(wxT("Scene file parse error.\nSee log for details."), wxT("Error"), wxOK | wxICON_ERROR, this);
 		ChangeRenderState(FINISHED);
 	} else if(event.GetEventType() == wxEVT_LUX_FLMLOADERROR) {
 		wxMessageBox(wxT("FLM load error.\nSee log for details."), wxT("Error"), wxOK | wxICON_ERROR, this);
@@ -3672,7 +3682,7 @@ void LuxGui::OnCommand(wxCommandEvent &event) {
 }
 
 #if defined (__WXMSW__) ||  defined (__WXGTK__)
-void lux::LuxGui::OnIconize( wxIconizeEvent& event )
+void LuxGui::OnIconize( wxIconizeEvent& event )
 {
 	if(!event.Iconized())
 		m_guiWindowState = SHOWN;
@@ -3746,9 +3756,9 @@ void LuxGui::EngineThread(wxString filename) {
 
 	// if stdin is input, don't use full path
 	if (filename == wxString::FromAscii("-"))
-		ParseFile(filename.fn_str());
+		luxParse(filename.fn_str());
 	else
-		ParseFile(fullPath.leaf().c_str());
+		luxParse(fullPath.leaf().c_str());
 
 	if (luxStatistics("terminated"))
 		return;
@@ -3855,7 +3865,7 @@ void LuxOutputWin::OnDraw(wxDC &dc) {
 
 /*** LuxGuiErrorHandler wrapper ***/
 
-void lux::LuxGuiErrorHandler(int code, int severity, const char *msg) {
+void LuxGuiErrorHandler(int code, int severity, const char *msg) {
 	// Dade - console print enabled by command line option
 	if (copyLog2Console)
 		luxErrorPrint(code, severity, msg);

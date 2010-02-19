@@ -24,7 +24,6 @@
 #define LUX_MATERIAL_H
 // material.h*
 #include "lux.h"
-#include "color.h"
 
 namespace lux
 {
@@ -32,21 +31,14 @@ namespace lux
 // Per Material/BSDF CompositingParams for precise control
 // when rendering objects in a compositing animation pipeline
 struct CompositingParams {
-	CompositingParams() {
-		tVm = tVl = tiVm = tiVl = true;
-		oA = false;
-		A = 0.f;
-		K = false;
-		Kc = RGBColor(1.f);
-	}
+	CompositingParams() : A(0.f), tVm(true), tVl(true), tiVm(true),
+		tiVl(true), oA(false) { }
+	float A;  // Overridden Alpha Value
 	bool tVm; // Trace Visibility for material
 	bool tVl; // Trace Visibility for emission
 	bool tiVm; // Trace Indirect Visibility for material
 	bool tiVl; // Trace Indirect Visibility for emission
 	bool oA;  // Override Alpha
-	float A;  // Overridden Alpha Value
-	bool K;   // Colour/Chroma Key
-	RGBColor Kc; // Colour Key/Chroma RGB Colour
 };
 
 // Material Class Declarations
@@ -56,18 +48,17 @@ public:
 	Material();
 	virtual ~Material();
 
-	void InitGeneralParams(const TextureParams &mp);
+	void InitGeneralParams(const ParamSet &mp);
 
-	virtual BSDF *GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom,
-		const DifferentialGeometry &dgShading) const = 0;
-	void Bump(boost::shared_ptr<Texture<float> > d, const DifferentialGeometry &dgGeom,
+	virtual BSDF *GetBSDF(const TsPack *tspack,
+		const DifferentialGeometry &dgGeom,
+		const DifferentialGeometry &dgShading,
+		const Volume *exterior, const Volume *interior) const = 0;
+	void Bump(const boost::shared_ptr<Texture<float> > &d, const DifferentialGeometry &dgGeom,
 		const DifferentialGeometry &dgShading, DifferentialGeometry *dgBump) const;
-	void SetChild1(boost::shared_ptr<Material> x) { child1 = x; }
-	void SetChild2(boost::shared_ptr<Material> x) { child2 = x; }
 
-	static void FindCompositingParams(const TextureParams &mp, CompositingParams *cp);
+	static void FindCompositingParams(const ParamSet &mp, CompositingParams *cp);
 
-	boost::shared_ptr<Material> child1, child2;
 	float bumpmapSampleDistance;
 	CompositingParams *compParams;
 };

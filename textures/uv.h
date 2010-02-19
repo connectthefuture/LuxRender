@@ -22,7 +22,9 @@
 
 // uv.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
+#include "color.h"
 #include "paramset.h"
 
 // TODO - radiance - add methods for Power and Illuminant propagation
@@ -49,9 +51,13 @@ public:
 		cs[1] = t - Floor2Int(t);
 		return SWCSpectrum(tspack, RGBColor(cs));
 	}
+	virtual float Y() const {
+		const float cs[COLOR_SAMPLES] = {1.f, 1.f, 0.f};
+		return RGBColor(cs).Y() / 2.f;
+	}
+	virtual float Filter() const { return 2.f / 3.f; }
 	
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 private:
 	TextureMapping2D *mapping;
 };

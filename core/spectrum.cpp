@@ -21,43 +21,23 @@
  ***************************************************************************/
 
 // RGBColor.cpp*
-#include "color.h"
 #include "spectrum.h"
 #include "spectrumwavelengths.h"
+#include "color.h"
 #include "regular.h"
 #include "memory.h"
 
 using namespace lux;
-
-XYZColor SWCSpectrum::ToXYZ(const TsPack *tspack) const {
-	SpectrumWavelengths *sw = tspack->swl;
-	float xyz[3];
-	xyz[0] = xyz[1] = xyz[2] = 0.;
-	if (sw->single) {
-		const int j = sw->single_w;
-		xyz[0] = sw->cie_X[j] * c[j];
-		xyz[1] = sw->cie_Y[j] * c[j];
-		xyz[2] = sw->cie_Z[j] * c[j];
-	} else {
-		for (unsigned int j = 0; j < WAVELENGTH_SAMPLES; ++j) {
-			xyz[0] += sw->cie_X[j] * c[j];
-			xyz[1] += sw->cie_Y[j] * c[j];
-			xyz[2] += sw->cie_Z[j] * c[j];
-		}
-	} 
-
-	return XYZColor(xyz);
-}
 
 Scalar SWCSpectrum::Y(const TsPack *tspack) const {
 	SpectrumWavelengths *sw = tspack->swl;
 	Scalar y = 0.f;
 
 	if (sw->single) {
-		const int j = sw->single_w;
+		const u_int j = sw->single_w;
 		y = sw->cie_Y[j] * c[j];
 	} else {
-		for (unsigned int j = 0; j < WAVELENGTH_SAMPLES; ++j) {
+		for (u_int j = 0; j < WAVELENGTH_SAMPLES; ++j) {
 			y += sw->cie_Y[j] * c[j];
 		}
 	}
@@ -71,18 +51,17 @@ Scalar SWCSpectrum::Filter(const TsPack *tspack) const
 	if (sw->single) {
 		result = c[sw->single_w];
 	} else {
-		for (int i = 0; i < WAVELENGTH_SAMPLES; ++i)
+		for (u_int i = 0; i < WAVELENGTH_SAMPLES; ++i)
 			result += c[i];
 		result *= inv_WAVELENGTH_SAMPLES;
 	}
 	return result;
 }
 
-SWCSpectrum::SWCSpectrum(const TsPack *tspack, const SPD *s) {
+SWCSpectrum::SWCSpectrum(const TsPack *tspack, const SPD &s) {
 	SpectrumWavelengths *sw = tspack->swl;
-	for (unsigned int j = 0; j < WAVELENGTH_SAMPLES; ++j) {
-		c[j] = s->sample(sw->w[j]);
-	}
+	for (u_int j = 0; j < WAVELENGTH_SAMPLES; ++j)
+		c[j] = s.sample(sw->w[j]);
 }
 
 SWCSpectrum::SWCSpectrum(const TsPack *tspack, const RGBColor &s) {
@@ -91,7 +70,7 @@ SWCSpectrum::SWCSpectrum(const TsPack *tspack, const RGBColor &s) {
 	const float g = s.c[1];
 	const float b = s.c[2];
 
-	for (unsigned int j = 0; j < WAVELENGTH_SAMPLES; ++j)
+	for (u_int j = 0; j < WAVELENGTH_SAMPLES; ++j)
 		c[j] = 0.;
 
 	if (r <= g && r <= b)

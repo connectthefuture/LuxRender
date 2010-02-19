@@ -35,11 +35,11 @@ public:
 
 	Mesh(const Transform &o2w, bool ro,
 			MeshAccelType acceltype,
-			int nv, const Point *P, const Normal *N, const float *UV,
-			MeshTriangleType tritype, int trisCount, const int *tris,
-			MeshQuadType quadtype, int nquadsCount, const int *quads,
-			MeshSubdivType subdivType, int nsubdivlevels,
-			boost::shared_ptr<Texture<float> > displacementMap,
+			u_int nv, const Point *P, const Normal *N, const float *UV,
+			MeshTriangleType tritype, u_int trisCount, const int *tris,
+			MeshQuadType quadtype, u_int nquadsCount, const int *quads,
+			MeshSubdivType subdivType, u_int nsubdivlevels,
+			boost::shared_ptr<Texture<float> > &displacementMap,
 			float displacementMapScale, float displacementMapOffset,
 			bool displacementMapNormalSmooth, bool displacementMapSharpBoundary);
 	virtual ~Mesh();
@@ -48,8 +48,8 @@ public:
 	virtual BBox WorldBound() const;
 	virtual bool CanIntersect() const { return false; }
 	virtual void Refine(vector<boost::shared_ptr<Primitive> > &refined,
-			const PrimitiveRefinementHints &refineHints,
-			boost::shared_ptr<Primitive> thisPtr);
+		const PrimitiveRefinementHints &refineHints,
+		const boost::shared_ptr<Primitive> &thisPtr);
 	virtual bool CanSample() const { return false; }
 
 	friend class MeshWaldTriangle;
@@ -78,24 +78,24 @@ protected:
 	MeshAccelType accelType;
 
 	// Dade - vertices data
-	int nverts;
+	u_int nverts;
 	Point *p; // in world space if no subdivision is needed, object space otherwise
 	Normal *n; // in object space
 	float *uvs;
 
 	// Dade - triangle data
 	MeshTriangleType triType;
-	int ntris;
+	u_int ntris;
 	int *triVertexIndex;
 
 	// Dade - quad data
 	MeshQuadType quadType;
-	int nquads;
+	u_int nquads;
 	int *quadVertexIndex;
 
 	// Lotus - subdivision data
 	bool mustSubdivide;
-	int nSubdivLevels;
+	u_int nSubdivLevels;
 	MeshSubdivType subdivType;
 	// optional displacement map
 	boost::shared_ptr<Texture<float> > displacementMap;
@@ -111,7 +111,7 @@ protected:
 class MeshBaryTriangle : public Primitive {
 public:
 	// BaryTriangle Public Methods
-	MeshBaryTriangle(const Mesh *m, int n)
+	MeshBaryTriangle(const Mesh *m, u_int n)
 		: mesh(m), v(&(mesh->triVertexIndex[3 * n])) {
 		if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
 			swap(const_cast<int *>(v)[1], const_cast<int *>(v)[2]);
@@ -164,7 +164,7 @@ public:
 class MeshWaldTriangle : public MeshBaryTriangle {
 public:
 	// WaldTriangle Public Methods
-	MeshWaldTriangle(const Mesh *m, int n);
+	MeshWaldTriangle(const Mesh *m, u_int n);
 	virtual ~MeshWaldTriangle() { }
 
 	virtual bool Intersect(const Ray &ray, Intersection *isect) const;
@@ -201,7 +201,7 @@ private:
 class MeshQuadrilateral : public Primitive {
 public:
 	// Quadrilateral Public Methods
-	MeshQuadrilateral(const Mesh *m, int n);
+	MeshQuadrilateral(const Mesh *m, u_int n);
 	virtual ~MeshQuadrilateral() { }
 
 	virtual BBox ObjectBound() const;
@@ -253,7 +253,7 @@ public:
 	static bool IsConvex(const Point &p0, const Point &p1, const Point &p2, const Point &p3);
 
 private:
-	static int MajorAxis(const Vector &v);
+	static u_int MajorAxis(const Vector &v);
 
 	static void ComputeV11BarycentricCoords(const Vector &e01, const Vector &e02, const Vector &e03, float *a11, float *b11);
 

@@ -22,7 +22,9 @@
 
 // windy.cpp*
 #include "lux.h"
+#include "spectrum.h"
 #include "texture.h"
+#include "equalspd.h"
 #include "paramset.h"
 
 // TODO - radiance - add methods for Power and Illuminant propagation
@@ -49,9 +51,11 @@ public:
 			FBm(P, dpdx, dpdy, .5f, 6);
 		return fabsf(windStrength) * waveHeight;
 	}
+	virtual float Y() const { return EqualSPD(.5f).Y(); }
+	virtual float Filter() const { return .5f; }
 	
-	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const TextureParams &tp);
-	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const TextureParams &tp);
+	static Texture<float> * CreateFloatTexture(const Transform &tex2world, const ParamSet &tp);
+	static Texture<SWCSpectrum> * CreateSWCSpectrumTexture(const Transform &tex2world, const ParamSet &tp);
 private:
 	// WindyTexture Private Data
 	TextureMapping3D *mapping;
@@ -59,7 +63,7 @@ private:
 
 // WindyTexture Method Definitions
 template <class T> inline Texture<float> * WindyTexture<T>::CreateFloatTexture(const Transform &tex2world,
-		const TextureParams &tp) {
+	const ParamSet &tp) {
 	// Initialize 3D texture mapping _map_ from _tp_
 	TextureMapping3D *map = new IdentityMapping3D(tex2world);
 	// Apply texture specified transformation option for 3D mapping
@@ -69,7 +73,7 @@ template <class T> inline Texture<float> * WindyTexture<T>::CreateFloatTexture(c
 }
 
 template <class T> inline Texture<SWCSpectrum> * WindyTexture<T>::CreateSWCSpectrumTexture(const Transform &tex2world,
-		const TextureParams &tp) {
+	const ParamSet &tp) {
 	// Initialize 3D texture mapping _map_ from _tp_
 	TextureMapping3D *map = new IdentityMapping3D(tex2world);
 	// Apply texture specified transformation option for 3D mapping

@@ -31,19 +31,22 @@ namespace lux
 class Mirror : public Material {
 public:
 	// Mirror Public Methods
-	Mirror(boost::shared_ptr<Texture<SWCSpectrum> > r, 
-		boost::shared_ptr<Texture<float> > flm, boost::shared_ptr<Texture<float> > flmindex, 
-		boost::shared_ptr<Texture<float> > bump, const CompositingParams &cp) {
-		Kr = r;
-		film = flm;
-		filmindex = flmindex;
-		bumpMap = bump;
+	Mirror(boost::shared_ptr<Texture<SWCSpectrum> > &r, 
+		boost::shared_ptr<Texture<float> > &flm,
+		boost::shared_ptr<Texture<float> > &flmindex, 
+		boost::shared_ptr<Texture<float> > &bump,
+		const CompositingParams &cp) : Kr(r), film(flm),
+		filmindex(flmindex), bumpMap(bump) {
 		compParams = new CompositingParams(cp);
 	}
 	virtual ~Mirror() { }
-	virtual BSDF *GetBSDF(const TsPack *tspack, const DifferentialGeometry &dgGeom, const DifferentialGeometry &dgShading) const;
-	
-	static Material * CreateMaterial(const Transform &xform, const TextureParams &mp);
+	virtual BSDF *GetBSDF(const TsPack *tspack,
+		const DifferentialGeometry &dgGeom,
+		const DifferentialGeometry &dgShading,
+		const Volume *exterior, const Volume *interior) const;
+
+	static Material * CreateMaterial(const Transform &xform,
+		const ParamSet &mp);
 private:
 	// Mirror Private Data
 	boost::shared_ptr<Texture<SWCSpectrum> > Kr;

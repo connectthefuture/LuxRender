@@ -32,9 +32,14 @@ namespace lux
 class  Fresnel {
 public:
 	// Fresnel Interface
-	virtual ~Fresnel();
+	virtual ~Fresnel() { }
 	virtual void Evaluate(const TsPack *tspack, float cosi, SWCSpectrum *const f) const = 0;
 	virtual float Index(const TsPack *tspack) const = 0;
+	virtual SWCSpectrum SigmaA(const TsPack *tspack) const {
+		return SWCSpectrum(0.f);
+	}
+	virtual void ComplexEvaluate(const TsPack *tspack,
+		SWCSpectrum *fr, SWCSpectrum *fi) const = 0;
 };
 
 void FrDiel(float cosi, float cost,
