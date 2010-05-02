@@ -20,56 +20,10 @@
  *   Lux Renderer website : http://www.luxrender.net                       *
  ***************************************************************************/
 
-#ifndef RENDERVIEW_H
-#define RENDERVIEW_H
+// uvmask.cpp*
+#include "uvmask.h"
+#include "dynload.h"
 
-#include <QtGui/QGraphicsView>
-#include <QtGui/QGraphicsScene>
-#include <QApplication>
-#include <QEvent>
-#include <QGraphicsPixmapItem>
-#include <QWheelEvent>
-#include <QMouseEvent>
-#include <QMatrix>
-#include <QPoint>
-#include <QClipboard>
-#include <QtOpenGL/QGLWidget>
+using namespace lux;
 
-class RenderView : public QGraphicsView
-{
-	Q_OBJECT
-
-public:
-
-	RenderView(QWidget *parent = 0, bool opengl = false);
-	~RenderView ();
-
-	void setZoomEnabled (bool enabled = true) { zoomEnabled = enabled; };
-	void reload ();
-	void setLogoMode ();
-	float getZoomFactor ();
-	int getWidth ();
-	int getHeight ();
-	void copyToClipboard ();
-	float origh;
-private:
-
-	bool zoomEnabled;
-	float zoomfactor;
-	QPoint currentpos;
-
-	QGraphicsScene *renderscene;
-	QGraphicsPixmapItem *luxlogo;
-	QGraphicsPixmapItem *luxfb;
-
-	void wheelEvent (QWheelEvent *event);
-	void mousePressEvent (QMouseEvent *event);
-	void resizeEvent(QResizeEvent *event);
-
-signals:
-
-	void viewChanged ();
-
-};
-
-#endif // RENDERVIEW_H
+static DynamicLoader::RegisterFloatTexture<UVMaskTexture<float> > r1("uvmask");

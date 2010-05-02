@@ -21,19 +21,27 @@
  ***************************************************************************/
 
 #include "renderview.hxx"
-
 #include "api.h"
 
+#include <iostream>
+
+using namespace std;
+
 RenderView::RenderView(QWidget *parent, bool opengl) : QGraphicsView(parent) {
+#if !defined(__APPLE__)
     if (opengl)
 		setViewport(new QGLWidget);
+#endif
 
 	renderscene = new QGraphicsScene();
 	renderscene->setBackgroundBrush(QColor(127,127,127));
 	luxlogo = renderscene->addPixmap(QPixmap(":/images/luxlogo_bg.png"));
 	luxfb = renderscene->addPixmap(QPixmap(":/images/luxlogo_bg.png"));
 	luxfb->hide ();
+	renderscene->setSceneRect (0.0f, 0.0f, 416, 389);
+	centerOn(luxlogo);
 	setScene(renderscene);
+	zoomfactor = 100.0f;
 }
 
 RenderView::~RenderView () {
@@ -59,13 +67,21 @@ void RenderView::reload () {
 		int w = luxStatistics("filmXres"), h = luxStatistics("filmYres");
 		unsigned char* fb = luxFramebuffer();
 
+		if (!fb)
+			return;
+			
 		if (luxlogo->isVisible ())
 			luxlogo->hide ();
 
 		luxfb->setPixmap(QPixmap::fromImage(QImage(fb, w, h, w * 3, QImage::Format_RGB888)));
 
-		if (!luxfb->isVisible())
+		if (!luxfb->isVisible()) {
+			resetTransform ();
 			luxfb->show ();
+			renderscene->setSceneRect (0.0f, 0.0f, w, h);
+			centerOn(luxfb);
+//			fitInView(luxfb, Qt::KeepAspectRatio);
+		}
 		zoomEnabled = true;
 		setDragMode(QGraphicsView::ScrollHandDrag);
 		setInteractive(true);
@@ -73,19 +89,36 @@ void RenderView::reload () {
 }
 
 void RenderView::setLogoMode () {
+	resetTransform ();
 	if (luxfb->isVisible()) {
 		luxfb->hide ();
 		zoomEnabled = false;
+		zoomfactor = 100.0f;
 	}
-	if (!luxlogo->isVisible ())
+	if (!luxlogo->isVisible ()) {
 		luxlogo->show ();
-	resetZoom ();
+		renderscene->setSceneRect (0.0f, 0.0f, 416, 389);
+		centerOn(luxlogo);
+	}
 	setInteractive(false);
 }
 
-void RenderView::resetZoom () {
-	setMatrix (QMatrix());
-} 
+void RenderView::resizeEvent(QResizeEvent *event) {
+	QGraphicsView::resizeEvent(event);
+	emit viewChanged ();
+}
+
+float RenderView::getZoomFactor () {
+	return zoomfactor;
+}
+
+int RenderView::getWidth () {
+	return width();
+}
+
+int RenderView::getHeight () {
+	return height();
+}
 
 void RenderView::wheelEvent (QWheelEvent* event) {
    if (!zoomEnabled)
@@ -94,7 +127,10 @@ void RenderView::wheelEvent (QWheelEvent* event) {
 	qreal factor = 1.2;
 	if (event->delta() < 0)
 		factor = 1.0 / factor;
+	zoomfactor *= factor;
 	scale(factor, factor);
+
+	emit viewChanged ();
 }
 
 void RenderView::mousePressEvent (QMouseEvent *event) {
@@ -103,11 +139,18 @@ void RenderView::mousePressEvent (QMouseEvent *event) {
 		switch (event->button()) {
 			case Qt::LeftButton:
 				currentpos = event->pos();
-	//			setCursor(Qt::ClosedHandCursor);
 				break;
 			case Qt::MidButton:
+				fitInView(renderscene->sceneRect(), Qt::KeepAspectRatio);
+				// compute correct zoomfactor
+				origh = luxStatistics("filmYres")/height();
+				zoomfactor = 100.0f/origh;
+				emit viewChanged ();
+				break;
 			case Qt::RightButton:
-				resetZoom ();
+				resetTransform ();
+				zoomfactor = 100.0f;
+				emit viewChanged ();
 				break;
 		}
 	}

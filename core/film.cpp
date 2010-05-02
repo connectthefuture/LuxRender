@@ -48,6 +48,7 @@
 #include <boost/iostreams/filter/zlib.hpp>
 #include <boost/iostreams/filter/bzip2.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
+#include <boost/filesystem.hpp>
 
 #define cimg_display_type  0
 
@@ -192,7 +193,7 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 	bool VignettingEnabled, float VignetScale,
 	bool aberrationEnabled, float aberrationAmount,
 	bool &haveGlareImage, XYZColor *&glareImage, bool glareUpdate,
-	float glareAmount, float glareRadius, u_int glareBlades,
+	float glareAmount, float glareRadius, u_int glareBlades, float glareThreshold,
 	const char *toneMapName, const ParamSet *toneMapParams,
 	float gamma, float dither)
 {
@@ -276,8 +277,29 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 
 			std::vector<XYZColor> rotatedImage(nPix2);
 			std::vector<XYZColor> blurredImage(nPix2);
+			std::vector<XYZColor> darkenedImage(nPix);
 			for(u_int i = 0; i < nPix; ++i)
 				glareImage[i] = XYZColor(0.f);
+			
+			// Search for the brightest pixel in the image
+			u_int max = 0;
+			for(u_int i = 1; i < nPix; ++i) {
+				if (xyzpixels[i].c[1] > xyzpixels[max].c[1])
+					max = i;
+			}
+			
+			// glareThreshold ranges between 0-1,
+			// but this relative value has to be converted to
+			//an absolute value fitting the image being processed
+			float glareAbsoluteThreshold = xyzpixels[max].c[1] *
+				glareThreshold;
+			// Every pixel that is not bright enough is made black
+			for(u_int i = 0; i < nPix; ++i) {
+				if(xyzpixels[i].c[1] < glareAbsoluteThreshold)
+					darkenedImage[i] = XYZColor(0.f);
+				else
+					darkenedImage[i] = xyzpixels[i];
+			}
 
 			const float radius = maxRes * glareRadius;
 
@@ -285,7 +307,7 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 			const float invBlades = 1.f / glareBlades;
 			float angle = 0.f;
 			for (u_int i = 0; i < glareBlades; ++i) {
-				rotateImage(xyzpixels, rotatedImage, xResolution, yResolution, angle);
+				rotateImage(darkenedImage, rotatedImage, xResolution, yResolution, angle);
 				horizontalGaussianBlur(rotatedImage, blurredImage, maxRes, maxRes, radius);
 				rotateImage(blurredImage, rotatedImage, maxRes, maxRes, -angle);
 
@@ -295,7 +317,7 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 						const u_int sx = x + (maxRes - xResolution) / 2;
 						const u_int sy = y + (maxRes - yResolution) / 2;
 
-						glareImage[y*xResolution+x] += rotatedImage[sy*maxRes + sx];
+						glareImage[y * xResolution + x] += rotatedImage[sy * maxRes + sx];
 					}
 				}
 				angle += 2.f * M_PI * invBlades;
@@ -307,11 +329,13 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 
 			rotatedImage.clear();
 			blurredImage.clear();
+			darkenedImage.clear();
 		}
 
 		if (haveGlareImage && glareImage != NULL) {
-			for(u_int i = 0; i < nPix; ++i)
-				xyzpixels[i] = Lerp(glareAmount, xyzpixels[i], glareImage[i]);
+			for(u_int i = 0; i < nPix; ++i) {
+				xyzpixels[i] += glareAmount * glareImage[i];
+			}
 		}
 	}
 
@@ -389,10 +413,8 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels,
 		aberrationImage.clear();
 	}
 
-	// Calculate histogram
-	if (HistogramEnabled) {
-		if (!histogram)
-			histogram = new Histogram();
+	// Calculate histogram (if it is enabled and exists)
+	if (HistogramEnabled && histogram) {
 		histogram->Calculate(rgbpixels, xResolution, yResolution);
 	}
 
@@ -608,18 +630,27 @@ void Film::CreateBuffers()
 		ZBuffer = new PerPixelNormalizedFloatBuffer(xPixelCount,yPixelCount);
 
     // Dade - check if we have to resume a rendering and restore the buffers
-    if(writeResumeFlm && !restartResumeFlm) {
-        // Dade - check if the film file exists
-        string fname = filename+".flm";
-		std::ifstream ifs(fname.c_str(), std::ios_base::in | std::ios_base::binary);
+    if(writeResumeFlm) {
+		const string fname = filename+".flm";
+		if (restartResumeFlm) {
+			const string oldfname = fname + "1";
+			if (boost::filesystem::exists(fname)) {
+				if (boost::filesystem::exists(oldfname))
+					remove(oldfname.c_str());
+				rename(fname.c_str(), oldfname.c_str());
+			}
+		} else {
+			// Dade - check if the film file exists
+			std::ifstream ifs(fname.c_str(), std::ios_base::in | std::ios_base::binary);
 
-        if(ifs.good()) {
-            // Dade - read the data
-            luxError(LUX_NOERROR, LUX_INFO, (std::string("Reading film status from file ")+fname).c_str());
-            UpdateFilm(ifs);
-        }
+			if(ifs.good()) {
+				// Dade - read the data
+				luxError(LUX_NOERROR, LUX_INFO, (std::string("Reading film status from file ")+fname).c_str());
+				UpdateFilm(ifs);
+			}
 
-        ifs.close();
+			ifs.close();
+		}
     }
 }
 
@@ -834,21 +865,33 @@ void Film::AddSample(Contribution *contrib) {
 void Film::WriteResumeFilm(const string &filename)
 {
 	// Dade - save the status of the film to the file
-	luxError(LUX_NOERROR, LUX_INFO, (std::string("Writing film status to file ") +
-			filename).c_str());
+	LOG(LUX_INFO, LUX_NOERROR) << "Writing film status to file";
 
-    std::ofstream filestr(filename.c_str(), std::ios_base::out | std::ios_base::binary);
+	string tempfilename = filename + ".temp";
+
+    std::ofstream filestr(tempfilename.c_str(), std::ios_base::out | std::ios_base::binary);
 	if(!filestr) {
 		std::stringstream ss;
-	 	ss << "Cannot open file '" << filename << "' for writing resume film";
+	 	ss << "Cannot open file '" << tempfilename << "' for writing resume film";
 		luxError(LUX_SYSTEM, LUX_SEVERE, ss.str().c_str());
 
 		return;
 	}
 
-    TransmitFilm(filestr,false,true);
+	bool writeSuccessful = TransmitFilm(filestr,false,true);
 
     filestr.close();
+
+	if (writeSuccessful) {
+		// if remove fails, rename might depending on platform fail, catch error there
+		remove(filename.c_str());
+		if (rename(tempfilename.c_str(), filename.c_str())) {
+			LOG(LUX_ERROR, LUX_SYSTEM) << 
+				"Failed to rename new resume film, leaving new resume film as '" << tempfilename << "'";
+			return;
+		}
+		LOG(LUX_INFO, LUX_NOERROR) << "Film status written to '" << filename << "'";
+	}
 }
 
 
@@ -1170,7 +1213,7 @@ void FlmHeader::Write(std::basic_ostream<char> &os, bool isLittleEndian) const
 	}
 }
 
-void Film::TransmitFilm(
+bool Film::TransmitFilm(
         std::basic_ostream<char> &stream,
         bool clearBuffers,
 		bool transmitParams) 
@@ -1234,6 +1277,7 @@ void Film::TransmitFilm(
 		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_AMOUNT, 0));
 		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_RADIUS, 0));
 		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_BLADES, 0));
+		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_GLARE_THRESHOLD, 0));
 
 		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_CHIU_ENABLED, 0));
 		header.params.push_back(FlmParameter(this, FLM_PARAMETER_TYPE_FLOAT, LUX_FILM_NOISE_CHIU_RADIUS, 0));
@@ -1316,7 +1360,7 @@ void Film::TransmitFilm(
 
 	if (!os.good()) {
 		luxError(LUX_SYSTEM, LUX_SEVERE, "Error while preparing film data for transmission");
-		return;
+		return false;
 	}
 
 	ss.str("");
@@ -1329,12 +1373,13 @@ void Film::TransmitFilm(
 	std::streamsize size = boost::iostreams::copy(in, stream);
 	if (!stream.good()) {
 		luxError(LUX_SYSTEM, LUX_SEVERE, "Error while transmitting film");
-		return;
+		return false;
 	}
 
 	ss.str("");
 	ss << "Film transmission done (" << (size / 1024) << " Kbytes sent)";
 	luxError(LUX_NOERROR, LUX_INFO, ss.str().c_str());
+	return true;
 }
 
 
@@ -1485,6 +1530,7 @@ bool Film::LoadResumeFilm(const string &filename)
 
 void Film::getHistogramImage(unsigned char *outPixels, u_int width, u_int height, int options)
 {
+    boost::mutex::scoped_lock lock(histMutex);
 	if (!histogram)
 		histogram = new Histogram();
 	histogram->MakeImage(outPixels, width, height, options);
@@ -1539,11 +1585,11 @@ void Histogram::CheckBucketNr()
 
 void Histogram::Calculate(vector<RGBColor> &pixels, u_int width, u_int height)
 {
+	boost::mutex::scoped_lock lock(this->m_mutex);
 	if (pixels.empty() || width == 0 || height == 0)
 		return;
 	u_int pixelNr = width * height;
 	float value;
-	boost::mutex::scoped_lock lock(m_mutex);
 
 	CheckBucketNr();
 
@@ -1571,15 +1617,17 @@ void Histogram::Calculate(vector<RGBColor> &pixels, u_int width, u_int height)
 }
 
 void Histogram::MakeImage(unsigned char *outPixels, u_int canvasW, u_int canvasH, int options){
+    boost::mutex::scoped_lock lock(this->m_mutex);
 	#define PIXELIDX(x,y,w) ((y)*(w)*3+(x)*3)
 	#define GETMAX(x,y) ((x)>(y)?(x):(y))
+	#define OPTIONS_CHANNELS_MASK (LUX_HISTOGRAM_LOG-1)
 	if (canvasW < 50 || canvasH < 25)
 		return; //too small
 	const u_int borderW = 3; //size of the plot border in pixels
 	const u_int guideW = 3; //size of the brightness guide bar in pixels
 	const u_int plotH = canvasH - borderW - (guideW + 2) - (borderW - 1);
 	const u_int plotW = canvasW - 2 * borderW;
-	boost::mutex::scoped_lock lock(m_mutex);
+   
 	if (canvasW - 2 * borderW != m_bucketNr)
 		m_newBucketNr = canvasW - 2 * borderW;
 
@@ -1605,11 +1653,11 @@ void Histogram::MakeImage(unsigned char *outPixels, u_int canvasW, u_int canvasH
 
 	//draw histogram bars
 	u_int channel = 0;
-	switch (options) {
+	switch (options & OPTIONS_CHANNELS_MASK) {
 		case LUX_HISTOGRAM_RGB: {
 			//get maxima for scaling
 			float max = 0.f;
-			for (u_int i = 4; i < (m_bucketNr - 1) * 4; ++i) {
+			for (u_int i = 0; i < m_bucketNr * 4; ++i) {
 				if (i % 4 != 3 && buckets[i] > max)
 					max = buckets[i];
 			}
@@ -1632,7 +1680,7 @@ void Histogram::MakeImage(unsigned char *outPixels, u_int canvasW, u_int canvasH
 		case LUX_HISTOGRAM_RED: {
 			//get maxima for scaling
 			float max = 0.f;
-			for (u_int i = 1; i < m_bucketNr-1; ++i) {
+			for (u_int i = 0; i < m_bucketNr; ++i) {
 				if (buckets[i * 4 + channel] > max)
 					max = buckets[i * 4 + channel];
 			}
@@ -1655,7 +1703,7 @@ void Histogram::MakeImage(unsigned char *outPixels, u_int canvasW, u_int canvasH
 		case LUX_HISTOGRAM_RGB_ADD: {
 			//calculate maxima for scaling
 			float max = 0.f;
-			for (u_int i = 1; i < m_bucketNr - 1; ++i) {
+			for (u_int i = 0; i < m_bucketNr; ++i) {
 				const float val = buckets[i * 4] + buckets[i * 4 + 1] + buckets[i * 4 + 2];
 				if (val > max)
 					max = val;
@@ -1690,7 +1738,7 @@ void Histogram::MakeImage(unsigned char *outPixels, u_int canvasW, u_int canvasH
 		for (u_int y = plotH + 2; y < plotH + 2 + guideW; ++y) {
 			const u_int idx = PIXELIDX(x + borderW, y + borderW, canvasW);
 			const unsigned char color = static_cast<unsigned char>(Clamp(expf(bucket * m_bucketSize + m_lowRange) * 256.f, 0.f, 255.f)); //no need to gamma-correct, as we're already in display-gamma space
-			switch (options) {
+			switch (options & OPTIONS_CHANNELS_MASK) {
 				case LUX_HISTOGRAM_RED:
 					outPixels[idx] = color;
 					outPixels[idx + 1] = 0;

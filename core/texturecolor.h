@@ -99,17 +99,24 @@ public:
 	}
 	TextureColor<T, colorSamples> &operator*=(const TextureColor<T, colorSamples> &sp) {
 		for (u_int i = 0; i < colorSamples; ++i)
-			if (sp.c[i] > std::numeric_limits<T>::max() / c[i])
+			if (c[i] != 0 && sp.c[i] > std::numeric_limits<T>::max() / c[i])
 				c[i] = std::numeric_limits<T>::max();
 			else
 				c[i] *= sp.c[i];
 		return *this;
 	}
 	TextureColor<T, colorSamples> operator*(float a) const {
-		return *this * TextureColor<T, colorSamples>(a);
+		TextureColor<T, colorSamples> ret = *this;
+		ret *= a;
+		return ret;
 	}
 	TextureColor<T, colorSamples> &operator*=(float a) {
-		return *this *= TextureColor<T, colorSamples>(a);
+		for (u_int i = 0; i < colorSamples; ++i)
+			if (c[i] != 0 && a > std::numeric_limits<T>::max() / static_cast<float>(c[i]))
+				c[i] = std::numeric_limits<T>::max();
+			else
+				c[i] *= a;
+		return *this;
 	}
 	friend inline TextureColor<T, colorSamples> operator*(float a, const TextureColor<T, colorSamples> &s) {
 		return s * a;

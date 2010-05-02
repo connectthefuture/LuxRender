@@ -17,6 +17,9 @@
    <iconset resource="icons.qrc">
     <normaloff>:/icons/luxrender.png</normaloff>:/icons/luxrender.png</iconset>
   </property>
+  <property name="unifiedTitleAndToolBarOnMac">
+   <bool>false</bool>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <property name="sizePolicy">
     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -163,20 +166,7 @@
           </item>
          </layout>
         </item>
-        <item row="0" column="1">
-         <spacer name="horizontalSpacer_4">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>0</width>
-            <height>0</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item row="1" column="0" colspan="3">
+        <item row="1" column="0" colspan="2">
          <widget class="QSplitter" name="splitter">
           <property name="enabled">
            <bool>true</bool>
@@ -202,7 +192,7 @@
            </property>
            <property name="minimumSize">
             <size>
-             <width>320</width>
+             <width>380</width>
              <height>0</height>
             </size>
            </property>
@@ -230,6 +220,18 @@
              <string>Imaging</string>
             </attribute>
             <layout class="QGridLayout" name="gridLayout_29">
+             <property name="leftMargin">
+              <number>4</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>4</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
              <item row="1" column="0">
               <widget class="QPushButton" name="button_imagingReset">
                <property name="enabled">
@@ -277,10 +279,22 @@
                </property>
               </widget>
              </item>
-             <item row="1" column="2">
+             <item row="1" column="3">
               <widget class="QPushButton" name="button_imagingApply">
                <property name="enabled">
                 <bool>true</bool>
+               </property>
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>200</width>
+                 <height>0</height>
+                </size>
                </property>
                <property name="toolTip">
                 <string>Apply changes</string>
@@ -290,7 +304,7 @@
                </property>
               </widget>
              </item>
-             <item row="0" column="0" colspan="3">
+             <item row="0" column="0" colspan="4">
               <widget class="QScrollArea" name="panesArea">
                <property name="frameShape">
                 <enum>QFrame::NoFrame</enum>
@@ -303,8 +317,8 @@
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>581</width>
-                  <height>552</height>
+                  <width>529</width>
+                  <height>515</height>
                  </rect>
                 </property>
                 <property name="sizePolicy">
@@ -314,12 +328,28 @@
                  </sizepolicy>
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout">
+                 <property name="margin">
+                  <number>4</number>
+                 </property>
                  <item>
                   <layout class="QVBoxLayout" name="panesLayout"/>
                  </item>
                 </layout>
                </widget>
               </widget>
+             </item>
+             <item row="1" column="2">
+              <spacer name="horizontalSpacer">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
              </item>
             </layout>
            </widget>
@@ -335,9 +365,12 @@
               <normaloff>:/icons/lightgroupsicon.png</normaloff>:/icons/lightgroupsicon.png</iconset>
             </attribute>
             <attribute name="title">
-             <string>Lightgroups</string>
+             <string>Light Groups</string>
             </attribute>
             <layout class="QVBoxLayout" name="verticalLayout_15">
+             <property name="margin">
+              <number>4</number>
+             </property>
              <item>
               <widget class="QScrollArea" name="lightGroupsArea">
                <property name="frameShape">
@@ -351,8 +384,8 @@
                  <rect>
                   <x>0</x>
                   <y>0</y>
-                  <width>581</width>
-                  <height>582</height>
+                  <width>533</width>
+                  <height>549</height>
                  </rect>
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -565,8 +598,11 @@
      <x>0</x>
      <y>0</y>
      <width>1024</width>
-     <height>23</height>
+     <height>22</height>
     </rect>
+   </property>
+   <property name="nativeMenuBar">
+    <bool>true</bool>
    </property>
    <widget class="QMenu" name="menu_render">
     <property name="title">
@@ -584,6 +620,7 @@
     <addaction name="action_clearLog"/>
     <addaction name="separator"/>
     <addaction name="action_fullScreen"/>
+    <addaction name="action_normalScreen"/>
    </widget>
    <widget class="QMenu" name="menu_help">
     <property name="title">
@@ -648,6 +685,15 @@
    <property name="text">
     <string>Exit</string>
    </property>
+   <property name="shortcut">
+    <string>Alt+Q</string>
+   </property>
+   <property name="shortcutContext">
+    <enum>Qt::ApplicationShortcut</enum>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::QuitRole</enum>
+   </property>
   </action>
   <action name="action_resumeRender">
    <property name="icon">
@@ -656,6 +702,9 @@
    </property>
    <property name="text">
     <string>Resume</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+R</string>
    </property>
   </action>
   <action name="action_pauseRender">
@@ -666,6 +715,9 @@
    <property name="text">
     <string>Pause</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+P</string>
+   </property>
   </action>
   <action name="action_stopRender">
    <property name="icon">
@@ -674,6 +726,9 @@
    </property>
    <property name="text">
     <string>Stop</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+S</string>
    </property>
   </action>
   <action name="action_viewToolbar">
@@ -730,17 +785,32 @@
   </action>
   <action name="action_copyLog">
    <property name="text">
-    <string>Copy</string>
+    <string>Copy log</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+C</string>
    </property>
   </action>
   <action name="action_clearLog">
    <property name="text">
     <string>Clear log</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+W</string>
+   </property>
   </action>
   <action name="action_fullScreen">
    <property name="text">
     <string>Full screen</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+F</string>
+   </property>
+   <property name="shortcutContext">
+    <enum>Qt::ApplicationShortcut</enum>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::TextHeuristicRole</enum>
    </property>
   </action>
   <action name="action_rulerDisabled">
@@ -782,6 +852,23 @@
   <action name="actionOpen_Recent">
    <property name="text">
     <string>Open Recent</string>
+   </property>
+  </action>
+  <action name="action_normalScreen">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Normal sceen</string>
+   </property>
+   <property name="shortcut">
+    <string>Esc</string>
+   </property>
+   <property name="shortcutContext">
+    <enum>Qt::ApplicationShortcut</enum>
+   </property>
+   <property name="iconVisibleInMenu">
+    <bool>true</bool>
    </property>
   </action>
  </widget>

@@ -41,11 +41,7 @@ struct KdNode {
 		hasLeftChild = 0;
 	}
 	void initLeaf() {
-		splitAxis = 3;
-		// Dade - in order to avoid a gcc warning
-		rightChild = 0;
-		rightChild = ~rightChild;
-		hasLeftChild = 0;
+		init(0.0f, 3);
 	}
 	// KdNode Data
 	float splitPos;
@@ -116,8 +112,9 @@ KdTree<NodeData, LookupProc>::recursiveBuild(u_int nodeNum,
 		bound = Union(bound, buildNodes[i]->p);
 	u_int splitAxis = bound.MaximumExtent();
 	u_int splitPos = (start + end) / 2;
-	std::nth_element(&buildNodes[start], &buildNodes[splitPos],
-		&buildNodes[end-1], CompareNode<NodeData>(splitAxis)); // NOTE - radiance - [end-1] - fix
+	// buildNodes[buildNodes.size()] may not exist
+	std::nth_element(buildNodes.begin()+start, buildNodes.begin()+splitPos,
+		buildNodes.begin()+end, CompareNode<NodeData>(splitAxis));
 
 	// Allocate kd-tree node and continue recursively
 	nodes[nodeNum].init(buildNodes[splitPos]->p[splitAxis],

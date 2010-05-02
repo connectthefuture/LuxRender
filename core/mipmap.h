@@ -45,6 +45,7 @@ enum ImageTextureFilterType {
 typedef enum {
 	TEXTURE_REPEAT,
 	TEXTURE_BLACK,
+	TEXTURE_WHITE,
 	TEXTURE_CLAMP
 } ImageWrap;
 
@@ -118,7 +119,7 @@ public:
 					Texel(channel, 0, s0, it + 1)) *
 					uSize(0);
 				*dt = Lerp(as, Texel(channel, 0, is, t1) -
-					Texel(channel, 0, is, t1),
+					Texel(channel, 0, is, t0),
 					Texel(channel, 0, is + 1, t1) -
 					Texel(channel, 0, is + 1, t0)) *
 					vSize(0);
@@ -154,7 +155,7 @@ public:
 					Texel(channel, s0, it + 1)) *
 					singleMap->uSize();
 				*dt = Lerp(as, Texel(channel, is, t1) -
-					Texel(channel, is, t1),
+					Texel(channel, is, t0),
 					Texel(channel, is + 1, t1) -
 					Texel(channel, is + 1, t0)) *
 					singleMap->vSize();
@@ -195,7 +196,7 @@ public:
 					Texel(tspack, 0, s0, it + 1).Filter(tspack)) *
 					uSize(0);
 				*dt = Lerp(as, Texel(tspack, 0, is, t1).Filter(tspack) -
-					Texel(tspack, 0, is, t1).Filter(tspack),
+					Texel(tspack, 0, is, t0).Filter(tspack),
 					Texel(tspack, 0, is + 1, t1).Filter(tspack) -
 					Texel(tspack, 0, is + 1, t0).Filter(tspack)) *
 					vSize(0);
@@ -231,7 +232,7 @@ public:
 					Texel(tspack, 0, s0, it + 1).Filter(tspack)) *
 					singleMap->uSize();
 				*dt = Lerp(as, Texel(tspack, 0, is, t1).Filter(tspack) -
-					Texel(tspack, 0, is, t1).Filter(tspack),
+					Texel(tspack, 0, is, t0).Filter(tspack),
 					Texel(tspack, 0, is + 1, t1).Filter(tspack) -
 					Texel(tspack, 0, is + 1, t0).Filter(tspack)) *
 					singleMap->vSize();
@@ -757,13 +758,14 @@ MIPMapFastImpl<T>::MIPMapFastImpl(ImageTextureFilterType type, u_int sres, u_int
 							origS = Clamp(origS, 0, static_cast<int>(sres - 1));
 							break;
 						case TEXTURE_BLACK:
+						case TEXTURE_WHITE:
 							break;
 						}
 
 						if (origS >= 0 && origS < static_cast<int>(sres)) {
 							if (sWeights[s].weight[j] > 0.f)
 								resampledImage[t * sPow2 + s] += sWeights[s].weight[j] * img[t * sres + origS];
-							else /* TextureColor cannot be negative so we invert and subtract */
+							else // TextureColor cannot be negative so we invert and subtract
 								resampledImage[t * sPow2 + s] -= (-sWeights[s].weight[j]) * img[t * sres + origS];
 						}
 					}
@@ -790,13 +792,14 @@ MIPMapFastImpl<T>::MIPMapFastImpl(ImageTextureFilterType type, u_int sres, u_int
 							origT = Clamp(origT, 0, static_cast<int>(tres - 1));
 							break;
 						case TEXTURE_BLACK:
+						case TEXTURE_WHITE:
 							break;
 						}
 
 						if (origT >= 0 && origT < static_cast<int>(tres)) {
 							if(tWeights[t].weight[j] > 0.f)
 								workData[t] += tWeights[t].weight[j] * resampledImage[origT * sPow2 + s];
-							else /* TextureColor cannot be negative so we invert and subtract */
+							else // TextureColor cannot be negative so we invert and subtract
 								workData[t] -= (-tWeights[t].weight[j]) * resampledImage[origT * sPow2 + s];
 						}
 					}
@@ -882,6 +885,10 @@ float MIPMapFastImpl<T>::Texel(Channel channel, u_int level, int s, int t) const
 			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
 				t < 0 || t >= static_cast<int>(l.vSize()))
 			return 0.f;
+		case TEXTURE_WHITE:
+			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
+				t < 0 || t >= static_cast<int>(l.vSize()))
+			return 1.f;
 	}
 
 	return l(s, t).GetFloat(channel);
@@ -905,6 +912,10 @@ SWCSpectrum MIPMapFastImpl<T>::Texel(const TsPack *tspack, u_int level,
 			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
 				t < 0 || t >= static_cast<int>(l.vSize()))
 			return SWCSpectrum(0.f);
+		case TEXTURE_WHITE:
+			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
+				t < 0 || t >= static_cast<int>(l.vSize()))
+			return SWCSpectrum(1.f);
 	}
 
 	return l(s, t).GetSpectrum(tspack);
@@ -928,6 +939,10 @@ float MIPMapFastImpl<T>::Texel(Channel channel, int s, int t) const
 			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
 				t < 0 || t >= static_cast<int>(l.vSize()))
 			return 0.f;
+		case TEXTURE_WHITE:
+			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
+				t < 0 || t >= static_cast<int>(l.vSize()))
+			return 1.f;
 	}
 
 	return l(s, t).GetFloat(channel);
@@ -950,6 +965,10 @@ SWCSpectrum MIPMapFastImpl<T>::Texel(const TsPack *tspack, int s, int t) const
 			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
 				t < 0 || t >= static_cast<int>(l.vSize()))
 			return SWCSpectrum(0.f);
+		case TEXTURE_WHITE:
+			if (s < 0 || s >= static_cast<int>(l.uSize()) ||
+				t < 0 || t >= static_cast<int>(l.vSize()))
+			return SWCSpectrum(1.f);
 	}
 
 	return l(s, t).GetSpectrum(tspack);

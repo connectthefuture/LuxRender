@@ -55,6 +55,8 @@ LensEffectsWidget::LensEffectsWidget(QWidget *parent) : QWidget(parent), ui(new 
 	connect(ui->slider_glareRadius, SIGNAL(valueChanged(int)), this, SLOT(glareRadiusChanged(int)));
 	connect(ui->spinBox_glareRadius, SIGNAL(valueChanged(double)), this, SLOT(glareRadiusChanged(double)));
 	connect(ui->spinBox_glareBlades, SIGNAL(valueChanged(int)), this, SLOT(glareBladesChanged(int)));
+	connect(ui->slider_glareThreshold, SIGNAL(valueChanged(int)), this, SLOT(glareThresholdSliderChanged(int)));
+	connect(ui->spinBox_glareThreshold, SIGNAL(valueChanged(double)), this, SLOT(glareThresholdSpinBoxChanged(double)));
 	connect(ui->button_glareComputeLayer, SIGNAL(clicked()), this, SLOT(computeGlareLayer()));
 	connect(ui->button_glareDeleteLayer, SIGNAL(clicked()), this, SLOT(deleteGlareLayer()));
 }
@@ -111,6 +113,9 @@ void LensEffectsWidget::updateWidgetValues()
 	updateWidgetValue(ui->spinBox_glareRadius, m_Glare_radius);
 	
 	updateWidgetValue(ui->spinBox_glareBlades, m_Glare_blades);
+	
+	updateWidgetValue(ui->slider_glareThreshold, (int)((FLOAT_SLIDER_RES / GLARE_THRESHOLD_RANGE) * m_Glare_threshold));
+	updateWidgetValue(ui->spinBox_glareThreshold, m_Glare_threshold);
 }
 
 void LensEffectsWidget::resetValues()
@@ -127,6 +132,7 @@ void LensEffectsWidget::resetValues()
 	m_Glare_amount = 0.03f;
 	m_Glare_radius = 0.03f;
 	m_Glare_blades = 3;
+	m_Glare_threshold = 0.5f;
 }
 
 void LensEffectsWidget::resetFromFilm (bool useDefaults)
@@ -222,21 +228,16 @@ void LensEffectsWidget::deleteBloomLayer()
 
 void LensEffectsWidget::vignettingAmountChanged(int value)
 {
-	vignettingAmountChanged ( (double)value / FLOAT_SLIDER_RES );
+	double dvalue = -1.0f + (2.0f * (double)value / FLOAT_SLIDER_RES);
+	vignettingAmountChanged ( dvalue );
 }
 
 void LensEffectsWidget::vignettingAmountChanged(double value)
 {
-	double pos = value;
-	pos -= 0.5f;
-	pos *= VIGNETTING_SCALE_RANGE * 2.f;
-	m_Vignetting_Scale = pos;
+	m_Vignetting_Scale = value;
 	
 	int sliderval; 
-	if (m_Vignetting_Scale >= 0.f)
-		sliderval = (int) (FLOAT_SLIDER_RES/2) + (( (FLOAT_SLIDER_RES/2) / VIGNETTING_SCALE_RANGE ) * (m_Vignetting_Scale));
-	else
-		sliderval = (int)(( FLOAT_SLIDER_RES/2 * VIGNETTING_SCALE_RANGE ) * (1.f - fabsf(m_Vignetting_Scale)));
+	sliderval = (int)(0.5f * (value + 1.0f) * FLOAT_SLIDER_RES);
 
 	updateWidgetValue(ui->slider_vignettingAmount, sliderval);
 	updateWidgetValue(ui->spinBox_vignettingAmount, m_Vignetting_Scale);
@@ -344,6 +345,23 @@ void LensEffectsWidget::glareBladesChanged(int value)
 	updateParam (LUX_FILM, LUX_FILM_GLARE_BLADES, m_Glare_blades);
 
 	emit valuesChanged();
+}
+
+void LensEffectsWidget::glareThresholdSliderChanged(int value)
+{
+	glareThresholdSpinBoxChanged( (double)value / FLOAT_SLIDER_RES * GLARE_THRESHOLD_RANGE );
+}
+
+void LensEffectsWidget::glareThresholdSpinBoxChanged(double value)
+{
+	m_Glare_threshold = value;
+	
+	int sliderval = (int)(FLOAT_SLIDER_RES / GLARE_THRESHOLD_RANGE * m_Glare_threshold);
+	
+	updateWidgetValue(ui->slider_glareThreshold, sliderval);
+	updateWidgetValue(ui->spinBox_glareThreshold, m_Glare_threshold);
+	
+	updateParam (LUX_FILM, LUX_FILM_GLARE_THRESHOLD, m_Glare_threshold);
 }
 
 void LensEffectsWidget::computeGlareLayer()

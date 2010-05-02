@@ -206,7 +206,8 @@ enum luxComponentParameters {	LUX_FILM_TM_TONEMAPKERNEL,
 				LUX_FILM_LG_TEMPERATURE,
 				LUX_FILM_LG_SCALE_X,
 				LUX_FILM_LG_SCALE_Y,
-				LUX_FILM_LG_SCALE_Z
+				LUX_FILM_LG_SCALE_Z,
+				LUX_FILM_GLARE_THRESHOLD
 };
 
 /* Parameter Access functions */

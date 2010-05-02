@@ -155,6 +155,7 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	connect(ui->action_copyLog, SIGNAL(triggered()), this, SLOT(copyLog()));
 	connect(ui->action_clearLog, SIGNAL(triggered()), this, SLOT(clearLog()));
 	connect(ui->action_fullScreen, SIGNAL(triggered()), this, SLOT(fullScreen()));
+    connect(ui->action_normalScreen, SIGNAL(triggered()), this, SLOT(normalScreen()));
 	
 	// Help menu slots
 	connect(ui->action_aboutDialog, SIGNAL(triggered()), this, SLOT(aboutDialog()));
@@ -164,9 +165,9 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	connect(ui->checkBox_imagingAuto, SIGNAL(stateChanged(int)), this, SLOT(autoEnabledChanged(int)));
 
 	// Panes
-	panes[0] = new PaneWidget(ui->panesAreaContents, "Tonemap", ":/icons/tonemapicon.png");
+	panes[0] = new PaneWidget(ui->panesAreaContents, "Tone Mapping", ":/icons/tonemapicon.png");
 	panes[1] = new PaneWidget(ui->panesAreaContents, "Lens Effects", ":/icons/lenseffectsicon.png", true);
-	panes[2] = new PaneWidget(ui->panesAreaContents, "Colorspace", ":/icons/colorspaceicon.png");
+	panes[2] = new PaneWidget(ui->panesAreaContents, "Color Space", ":/icons/colorspaceicon.png");
 	panes[3] = new PaneWidget(ui->panesAreaContents, "Gamma", ":/icons/gammaicon.png", true);
 	panes[4] = new PaneWidget(ui->panesAreaContents, "HDR Histogram", ":/icons/histogramicon.png");
 	panes[5] = new PaneWidget(ui->panesAreaContents, "Noise Reduction", ":/icons/noisereductionicon.png", true);
@@ -185,7 +186,7 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	connect(lenseffectswidget, SIGNAL(forceUpdate()), this, SLOT(forceToneMapUpdate()));
 	connect(lenseffectswidget, SIGNAL(valuesChanged()), this, SLOT(toneMapParamsChanged()));
 
-	// Colourspace
+	// Colorspace
 	colorspacewidget = new ColorSpaceWidget(panes[2]);
 	panes[2]->setWidget(colorspacewidget);
 	ui->panesLayout->addWidget(panes[2]);
@@ -201,6 +202,7 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	histogramwidget = new HistogramWidget(panes[4]);
 	panes[4]->setWidget(histogramwidget);
 	ui->panesLayout->addWidget(panes[4]);
+    panes[4]->expand();
 
 	// Noise reduction
 	noisereductionwidget = new NoiseReductionWidget(panes[5]);
@@ -224,6 +226,7 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	// Buttons
 	connect(ui->button_imagingApply, SIGNAL(clicked()), this, SLOT(applyTonemapping()));
 	connect(ui->button_imagingReset, SIGNAL(clicked()), this, SLOT(resetToneMapping()));
+	connect(ui->tabs_main, SIGNAL(currentChanged(int)), this, SLOT(tabChanged(int)));
 
 	// Render threads
 	connect(ui->button_addThread, SIGNAL(clicked()), this, SLOT(addThread()));
@@ -231,15 +234,68 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	
 	// Clipboard
 	connect(ui->button_copyToClipboard, SIGNAL(clicked()), this, SLOT(copyToClipboard()));
-
-	// Statusbar
-	statusMessage = new QLabel();
-	statsMessage = new QLabel();
-	statusMessage->setFrameStyle(QFrame::Panel | QFrame::Sunken);
-	statsMessage->setFrameStyle(QFrame::Panel | QFrame::Sunken);
-	ui->statusbar->addPermanentWidget(statusMessage, 1);
-	ui->statusbar->addPermanentWidget(statsMessage, 1);
 	
+	// Resolution-Info
+	resinfospacer = new QSpacerItem( 0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum);
+	resLabel = new QLabel(tr(" Resolution:"));
+	resinfoLabel = new QLabel();
+	zoomLabel = new QLabel(tr(" Zoom Factor:"));
+	zoominfoLabel = new QLabel();
+	viewportLabel = new QLabel(tr(" Viewportsize:"));
+	viewportinfoLabel = new QLabel();
+
+	resinfoLabel->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+	resinfoLabel->setMinimumWidth(100);
+	zoominfoLabel->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+	zoominfoLabel->setMinimumWidth(100);
+	viewportinfoLabel->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+	viewportinfoLabel->setMinimumWidth(100);
+
+	ui->horizontalLayout_4->addItem(new QSpacerItem( 0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
+	ui->horizontalLayout_4->addWidget(resLabel, 0);
+	ui->horizontalLayout_4->addWidget(resinfoLabel, 0);	
+	ui->horizontalLayout_4->addWidget(zoomLabel, 0);
+	ui->horizontalLayout_4->addWidget(zoominfoLabel, 0);
+	ui->horizontalLayout_4->addWidget(viewportLabel, 0);
+	ui->horizontalLayout_4->addWidget(viewportinfoLabel, 0);	
+	
+	// Statusbar
+	activityLabel = new QLabel(tr("  Status:"));
+	activityMessage = new QLabel();
+	statusLabel = new QLabel(tr(" Activity:"));
+	statusMessage = new QLabel();
+	statusProgress = new QProgressBar();
+#if defined(__APPLE__)
+	statsLabel = new QLabel(tr(" Statistics:"));
+#else
+	statsLabel = new QLabel(tr(" Stats:"));
+#endif
+	statsMessage = new QLabel();
+    
+	activityLabel->setMaximumWidth(60);
+	activityMessage->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+	activityMessage->setMaximumWidth(140);
+	statusLabel->setMaximumWidth(60);
+	statusMessage->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+	statusMessage->setMaximumWidth(320);
+	statusProgress->setMaximumWidth(100);
+	statusProgress->setRange(0, 100);
+#if defined(__APPLE__)
+	statsLabel->setMaximumWidth(70);
+#else
+	statsLabel->setMaximumWidth(60);
+#endif
+	statsMessage->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+    
+	ui->statusbar->addPermanentWidget(activityLabel, 1);
+	ui->statusbar->addPermanentWidget(activityMessage, 1);
+    
+	ui->statusbar->addPermanentWidget(statusLabel, 1);
+	ui->statusbar->addPermanentWidget(statusMessage, 1);
+	ui->statusbar->addPermanentWidget(statusProgress, 1);
+	ui->statusbar->addPermanentWidget(statsLabel, 1);
+	ui->statusbar->addPermanentWidget(statsMessage, 1);
+
 	// Update timers
 	m_renderTimer = new QTimer();
 	connect(m_renderTimer, SIGNAL(timeout()), SLOT(renderTimeout()));
@@ -255,10 +311,15 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 
 	m_netTimer = new QTimer();
 	connect(m_netTimer, SIGNAL(timeout()), SLOT(netTimeout()));
+    
+	m_blinkTimer = new QTimer();
+	connect(m_blinkTimer, SIGNAL(timeout()), SLOT(blinkTrigger()));
+
 
 	// Init render area
 	renderView = new RenderView(ui->frame_render, m_opengl);
 	ui->renderLayout->addWidget(renderView, 0, 0, 1, 1);
+	connect(renderView, SIGNAL(viewChanged()), this, SLOT(viewportChanged()));
 	renderView->show ();
 
 	ui->outputTabs->setEnabled (false);
@@ -275,7 +336,6 @@ MainWindow::MainWindow(QWidget *parent, bool opengl, bool copylog2console) : QMa
 	m_auto_tonemap = false;
 	resetToneMapping();
 	m_auto_tonemap = true;
-	m_showWarningDialog = true;
 
 	copyLog2Console = m_copyLog2Console;
 	luxErrorHandler(&LuxGuiErrorHandler);
@@ -365,22 +425,31 @@ void MainWindow::WriteSettings()
 	settings.endGroup();
 }
 
-void MainWindow::ShowDialogBox(const std::string &msg, const std::string &caption) {
-    QMessageBox::information(this, caption.c_str(), msg.c_str());
-}
-
-void MainWindow::ShowWarningDialogBox(const std::string &msg, const std::string &caption) {
-    QMessageBox::warning(this, caption.c_str(), msg.c_str());
-}
-
-void MainWindow::ShowErrorDialogBox(const std::string &msg, const std::string &caption) {
-    QMessageBox::critical(this, caption.c_str(), msg.c_str());
+void MainWindow::ShowTabLogIcon ( int index, const QIcon & icon )
+{
+	ui->tabs_main->setTabIcon(index, icon);
 }
 
 void MainWindow::toneMapParamsChanged()
 {
 	if (m_auto_tonemap)
 		applyTonemapping();
+}
+
+void MainWindow::indicateActivity(bool active)
+{
+	if (active) {
+#if !defined(__APPLE__)
+		statusProgress->show ();
+#endif
+		statusProgress->setRange(0, 0);
+	}
+	else {
+#if !defined(__APPLE__)
+		statusProgress->hide ();
+#endif
+		statusProgress->setRange(0, 100);
+	}
 }
 
 void MainWindow::forceToneMapUpdate()
@@ -431,8 +500,8 @@ void MainWindow::LuxGuiErrorHandler(int code, int severity, const char *msg)
 	if (copyLog2Console)
 	    luxErrorPrint(code, severity, msg);
 	
-    foreach (QWidget *widget, qApp->topLevelWidgets())
-  	    qApp->postEvent(widget, new LuxLogEvent(code,severity,QString(msg)));
+	foreach (QWidget *widget, qApp->topLevelWidgets())
+		qApp->postEvent(widget, new LuxLogEvent(code,severity,QString(msg)));
 }
 
 bool MainWindow::canStopRendering()
@@ -458,7 +527,7 @@ void MainWindow::openFile()
 		return;
 
 	QString fileName = QFileDialog::getOpenFileName(this, tr("Choose a scene file to open"), m_lastOpendir, tr("LuxRender Files (*.lxs)"));
-
+    
 	if(!fileName.isNull()) {
 		endRenderingSession();
 		renderScenefile(fileName);
@@ -467,6 +536,9 @@ void MainWindow::openFile()
 
 void MainWindow::openRecentFile()
 {
+	if (!canStopRendering())
+		return;
+    
 	QAction *action = qobject_cast<QAction *>(sender());
 
 	if (action) {
@@ -508,10 +580,8 @@ void MainWindow::loadFLM()
 
 	//SetTitle(wxT("LuxRender - ")+fn.GetName());
 
-	m_progDialog = new QProgressDialog(tr("Loading FLM..."),QString(),0,0,this);
-	m_progDialog->setWindowFlags(m_progDialog->windowFlags() & ~Qt::WindowContextHelpButtonHint);
-	m_progDialog->show();
-
+	indicateActivity ();
+	statusMessage->setText("Loading FLM...");
 	// Start load thread
 	m_loadTimer->start(1000);
 
@@ -533,9 +603,10 @@ void MainWindow::saveFLM()
 		return;
 
 	// Start save thread
-	m_progDialog = new QProgressDialog(tr("Saving FLM..."),QString(),0,0,this);
-	m_progDialog->setWindowFlags(m_progDialog->windowFlags() & ~Qt::WindowContextHelpButtonHint);
-	m_progDialog->show();
+    
+	indicateActivity ();
+	statusMessage->setText("Saving FLM...");
+    
 	m_saveTimer->start(1000);
 
 	delete m_flmsaveThread;
@@ -561,17 +632,22 @@ void MainWindow::resumeRender()
 		
 		if (m_guiRenderState == STOPPED)
 			luxSetHaltSamplePerPixel(-1, false, false);
-		
 		changeRenderState(RENDERING);
+		showRenderresolution();
+		showZoomfactor();
+		showViewportsize();
 	}
 }
 
 void MainWindow::pauseRender()
 {
 	if (m_guiRenderState != PAUSED && m_guiRenderState != TONEMAPPING) {
-		// Stop display update timer
-		m_renderTimer->stop();
-		m_statsTimer->stop();
+		// We have to check if network rendering is enabled. In this case,
+		// we don't stop timer in order to save the image to the disk, etc.
+		if (luxGetServerCount() < 1) {
+			m_renderTimer->stop();
+			m_statsTimer->stop();
+		}
 		
 		if (m_guiRenderState == RENDERING)
 			luxPause();
@@ -605,6 +681,7 @@ void MainWindow::endRenderingSession()
 		m_renderTimer->stop ();
 		m_statsTimer->stop ();
 		m_netTimer->stop ();
+		clearLog();
 
 		if (m_flmloadThread)
 			m_flmloadThread->join();
@@ -639,11 +716,42 @@ void MainWindow::copyLog()
 void MainWindow::clearLog()
 {
 	ui->textEdit_log->setPlainText("");
+	blinkTrigger(false);
 }
 
 void MainWindow::fullScreen()
 {
+	if (renderView->isFullScreen()) {
+		delete renderView; // delete and reinitialize to recenter render
+		renderView = new RenderView(ui->frame_render, m_opengl);
+		ui->renderLayout->addWidget(renderView, 0, 0, 1, 1);
+		connect(renderView, SIGNAL(viewChanged()), this, SLOT(viewportChanged())); // reconnect
+		renderView->reload();
+		renderView->show ();
+		ui->action_normalScreen->setEnabled (false);
+	}
+	else {
+		renderView->setParent( NULL );
+		renderView->setHorizontalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+		renderView->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
+		renderView->showFullScreen();
+		ui->action_normalScreen->setEnabled (true);
+	}
 }
+
+void MainWindow::normalScreen()
+{
+	if (renderView->isFullScreen()) {
+		delete renderView; // delete and reinitialize to recenter render
+		renderView = new RenderView(ui->frame_render, m_opengl);
+		ui->renderLayout->addWidget(renderView, 0, 0, 1, 1);
+		connect(renderView, SIGNAL(viewChanged()), this, SLOT(viewportChanged())); // reconnect
+		renderView->reload();
+		renderView->show ();
+		ui->action_normalScreen->setEnabled (false);
+	}
+}
+
 
 // Help menu slots
 void MainWindow::aboutDialog()
@@ -663,6 +771,7 @@ void MainWindow::applyTonemapping(bool withlayercomputation)
 		} else {
 			luxError(LUX_NOERROR, LUX_INFO, tr("GUI: Updating framebuffer/Computing Lens Effect Layer(s)...").toLatin1().data());
 			statusMessage->setText(tr("Computing Lens Effect Layer(s) & Tonemapping..."));
+			indicateActivity();
 		}
 		m_updateThread = new boost::thread(boost::bind(&MainWindow::updateThread, this));
 	}
@@ -753,6 +862,28 @@ void MainWindow::updateStatistics()
 	statsMessage->setText(QString("%1:%2:%3 - %4 S/s - %5 TotS/s - %6 S/px - %7% eff - EV = %8").arg(hours,2,10,QChar('0')).arg(mins, 2,10,QChar('0')).arg(secs,2,10,QChar('0')).arg(samplesSec).arg(samplesTotSec).arg(samplesPx).arg(efficiency).arg(EV));
 }
 
+// show the render-resolution
+void MainWindow::showRenderresolution()
+{
+	int w = luxStatistics("filmXres"), h = luxStatistics("filmYres");
+	resinfoLabel->setText(QString("%1 x %2").arg(w).arg(h));
+}
+// show the zoom-factor in viewport
+void MainWindow::showZoomfactor()
+{
+	zoominfoLabel->setText((QString("%1").arg(renderView->getZoomFactor()))+ "%");
+}
+// show the actual viewportsize
+void MainWindow::viewportChanged() {
+	showZoomfactor();
+	showViewportsize();
+}
+// actual viewportsize
+void MainWindow::showViewportsize() {
+	int viewportw = renderView->width(), viewporth = renderView->height();
+	viewportinfoLabel->setText(QString("%1 x %2").arg(viewportw).arg(viewporth));
+}
+
 void MainWindow::renderScenefile(const QString& sceneFilename, const QString& flmFilename)
 {
 	// Get the absolute path of the flm file
@@ -779,7 +910,7 @@ void MainWindow::setCurrentFile(const QString& filename)
 			showName = "LuxRender - Piped Scene";
 		else
 			showName = "LuxRender - " + showName;
-
+        
 		m_lastOpendir = info.filePath();
 		m_recentFiles.removeAll(m_CurrentFile);
 		m_recentFiles.prepend(m_CurrentFile);
@@ -819,16 +950,11 @@ void MainWindow::renderScenefile(const QString& filename)
 	// NOTE - lordcrc - create progress dialog before starting engine thread
 	//                  so we don't try to destroy it before it's properly created
 	
-	m_progDialog = new QProgressDialog(tr("Loading scene..."),QString(),0,0,this);
-	m_progDialog->setWindowFlags(m_progDialog->windowFlags() & ~Qt::WindowContextHelpButtonHint);
-
-	m_progDialog->show();
-
+    indicateActivity ();
+	statusMessage->setText("Loading scene...");
+    
 	m_loadTimer->start(1000);
 
-	m_showParseWarningDialog = true;
-	m_showParseErrorDialog = true;
-	m_showWarningDialog = true;
 
 	// Start main render thread
 	if (m_engineThread)
@@ -842,6 +968,16 @@ void MainWindow::changeRenderState(LuxGuiRenderState state)
 {
 	switch (state) {
 		case WAITING:
+			ui->button_resume->setEnabled (false);
+			ui->action_resumeRender->setEnabled (false);
+			ui->button_pause->setEnabled (false);
+			ui->action_pauseRender->setEnabled (false);
+			ui->button_stop->setEnabled (false);
+			ui->action_stopRender->setEnabled (false);
+			ui->button_copyToClipboard->setEnabled (false);
+			activityMessage->setText("Idle");
+			statusProgress->setRange(0, 100);
+			break;
 		case PARSING:
 			// Waiting for input file. Most controls disabled.
 			ui->button_resume->setEnabled (false);
@@ -852,6 +988,7 @@ void MainWindow::changeRenderState(LuxGuiRenderState state)
 			ui->action_stopRender->setEnabled(false);
 			ui->button_copyToClipboard->setEnabled (false);
 			//m_viewerToolBar->Disable();
+			activityMessage->setText("Parsing scenefile");
 			renderView->setLogoMode();
 			break;
 		case RENDERING:
@@ -863,9 +1000,19 @@ void MainWindow::changeRenderState(LuxGuiRenderState state)
 			ui->button_stop->setEnabled (true);
 			ui->action_stopRender->setEnabled (true);
 			ui->button_copyToClipboard->setEnabled (true);
+			activityMessage->setText("Rendering...");
 			break;
 		case TONEMAPPING:
 		case FINISHED:
+			ui->button_resume->setEnabled (false);
+			ui->action_resumeRender->setEnabled (false);
+			ui->button_pause->setEnabled (false);
+			ui->action_pauseRender->setEnabled (false);
+			ui->button_stop->setEnabled (false);
+			ui->action_stopRender->setEnabled (false);
+			ui->button_copyToClipboard->setEnabled (true);
+			activityMessage->setText("Render is finished");
+			break;
 		case STOPPING:
 			// Rendering is being stopped.
 			ui->button_resume->setEnabled (false);
@@ -885,6 +1032,7 @@ void MainWindow::changeRenderState(LuxGuiRenderState state)
 			ui->button_stop->setEnabled (false);
 			ui->action_stopRender->setEnabled (false);
 			ui->button_copyToClipboard->setEnabled (true);
+			activityMessage->setText("Render is stopped");
 			break;
 		case PAUSED:
 			// Rendering is paused.
@@ -895,6 +1043,7 @@ void MainWindow::changeRenderState(LuxGuiRenderState state)
 			ui->button_stop->setEnabled (true);
 			ui->action_stopRender->setEnabled (true);
 			ui->button_copyToClipboard->setEnabled (true);
+			activityMessage->setText("Render is paused");
 			break;
 	}
 	m_guiRenderState = state;
@@ -914,21 +1063,24 @@ bool MainWindow::event (QEvent *event)
 		delete m_updateThread;
 		m_updateThread = NULL;
 		statusMessage->setText("");
+		// reset progressindicator
+		indicateActivity(false);
 		renderView->reload();
 		histogramwidget->Update();
 		retval = TRUE;
 	}
 	else if (eventtype == EVT_LUX_PARSEERROR) {
-		m_progDialog->cancel();
-		delete m_progDialog;
-		m_progDialog = NULL;
 		m_loadTimer->stop();
-
+		blinkTrigger();
+		indicateActivity(false);
+		statusMessage->setText("Loading aborted");
 		changeRenderState(FINISHED);
 		retval = TRUE;
 	}
 	else if (eventtype == EVT_LUX_FLMLOADERROR) {
-		ShowErrorDialogBox("FLM load error.\nSee log for details.");
+		blinkTrigger();
+		indicateActivity(false);
+		statusMessage->setText("Loading aborted");
 		if (m_flmloadThread) {
 			m_flmloadThread->join();
 			delete m_flmloadThread;
@@ -944,15 +1096,10 @@ bool MainWindow::event (QEvent *event)
 			stopRender();
 
 			changeRenderState(FINISHED);
-			
-			ShowDialogBox("Rendering is finished.");
 		}
 		retval = TRUE;
 	}
 	else if (eventtype == EVT_LUX_SAVEDFLM) {
-		m_progDialog->cancel();
-		delete m_progDialog;
-		m_progDialog = NULL;
 		m_saveTimer->stop();
 
 		if (m_flmsaveThread)
@@ -961,7 +1108,7 @@ bool MainWindow::event (QEvent *event)
 		m_flmsaveThread = NULL;
 		retval = TRUE;
 	}
-	else if (eventtype == EVT_LUX_LOGEVENT){
+	else if (eventtype == EVT_LUX_LOGEVENT) {
 		logEvent((LuxLogEvent *)event);
 		retval = TRUE;
 		}
@@ -994,7 +1141,7 @@ void MainWindow::logEvent(LuxLogEvent *event)
 		startPos = ui->textEdit_log->textCursor().selectionStart();
 		endPos = ui->textEdit_log->textCursor().selectionEnd();
 	}
-	
+
 	// Append log message to end of document
 	ui->textEdit_log->moveCursor(QTextCursor::End);
 
@@ -1011,7 +1158,7 @@ void MainWindow::logEvent(LuxLogEvent *event)
 		case LUX_WARNING:
 			ss << tr("Warning: ");
 			ui->textEdit_log->setTextColor(warningColour);
-			warning = true;
+			warning = true;            
 			break;
 		case LUX_ERROR:
 			ss << tr("Error: ");
@@ -1040,13 +1187,50 @@ void MainWindow::logEvent(LuxLogEvent *event)
 
 	ui->textEdit_log->ensureCursorVisible();
 	
-	if (m_showWarningDialog && event->getSeverity() > LUX_INFO) {
-		m_showWarningDialog = false;
-		if (event->getSeverity() < LUX_SEVERE) {
-			ShowWarningDialogBox("There was an abnormal condition reported. Please, check the Log tab for more information.");
+	int currentIndex = ui->tabs_main->currentIndex();
+	if (currentIndex != 1 && event->getSeverity() > LUX_INFO) {
+		blink = true;
+		if (event->getSeverity() < LUX_ERROR) {
+			static const QIcon icon(":/icons/warningicon.png");
+			ShowTabLogIcon(1, icon);
 		} else {
-			ShowErrorDialogBox("There was severe error reported. Please, check the Log tab for more information.");
+			blinkTrigger();
+			statusMessage->setText("Check Log Please");
 		}
+	}
+}
+
+//user acknowledged error/warning-conditions 
+void MainWindow::tabChanged(int)
+{ 
+	int currentIndex = ui->tabs_main->currentIndex();
+	if (currentIndex == 1) {
+		blinkTrigger(false);
+		static const QIcon icon(":/icons/logtabicon.png");
+		ShowTabLogIcon(1, icon);
+		statusMessage->setText("Checking Log acknowledged");
+	}
+}
+	
+// Icon blinking flipflop
+void MainWindow::blinkTrigger(bool active)
+{
+	if (active) {
+		m_blinkTimer->start(1000);
+		blink = !blink;
+		if (blink) {
+			static const QIcon icon(":/icons/erroricon.png");
+			ShowTabLogIcon(1, icon);
+		}
+		else {
+			static const QIcon icon(":/icons/logtabicon.png");
+			ShowTabLogIcon(1, icon);
+		}
+	} else {
+		m_blinkTimer->stop();
+		blink = false;
+		static const QIcon icon(":/icons/logtabicon.png");
+		ShowTabLogIcon(1, icon);
 	}
 }
 
@@ -1085,11 +1269,9 @@ void MainWindow::statsTimeout()
 
 void MainWindow::loadTimeout()
 {
-	m_progDialog->setValue(m_progDialog->value()+1);
 	if(luxStatistics("sceneIsReady") || m_guiRenderState == FINISHED) {
-		m_progDialog->cancel();
-		delete m_progDialog;
-		m_progDialog = NULL;
+		indicateActivity(false);
+		statusMessage->setText("");
 		m_loadTimer->stop();
 
 		if (luxStatistics("sceneIsReady")) {
@@ -1108,12 +1290,13 @@ void MainWindow::loadTimeout()
 			ui->outputTabs->setEnabled (true);
 			resetToneMappingFromFilm (false);
 			ResetLightGroupsFromFilm (false);
+			
+			renderView->resetTransform();
 		}
 	}
 	else if ( luxStatistics("filmIsReady") ) {
-		m_progDialog->cancel();
-		delete m_progDialog;
-		m_progDialog = NULL;
+		indicateActivity(false);
+		statusMessage->setText("");
 		m_loadTimer->stop();
 
 		if(m_flmloadThread) {
@@ -1130,6 +1313,7 @@ void MainWindow::loadTimeout()
 		ResetLightGroupsFromFilm( false );
 		// Update framebuffer
 		luxUpdateFramebuffer();
+		renderView->resetTransform();
 		renderView->reload();
 		// Update stats
 		updateStatistics();
@@ -1138,7 +1322,8 @@ void MainWindow::loadTimeout()
 
 void MainWindow::saveTimeout()
 {
-	m_progDialog->setValue(m_progDialog->value()+1);
+	indicateActivity(false);
+	statusMessage->setText("");
 }
 
 void MainWindow::netTimeout()
@@ -1150,6 +1335,7 @@ void MainWindow::resetToneMapping()
 {
 	if (luxStatistics("sceneIsReady") || luxStatistics("filmIsReady")) {
 		resetToneMappingFromFilm( true );
+		statusMessage->setText("Reloading Tonemapping from Film");
 		return;
 	}
 
@@ -1160,7 +1346,7 @@ void MainWindow::resetToneMapping()
 	noisereductionwidget->resetValues();
 
 	updateTonemapWidgetValues ();
-
+    
 	ui->outputTabs->setEnabled (false);
 }
 

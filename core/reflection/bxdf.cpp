@@ -418,9 +418,10 @@ bool MixBSDF::Sample_f(const TsPack *tspack, const Vector &wo, Vector *wi,
 		}
 		u3 -= weights[i];
 	}
+	BxDFType sType;
 	if (!bsdfs[which]->Sample_f(tspack,
 		wo, wi, u1, u2, u3 / weights[which], f_, pdf, flags,
-		sampledType, pdfBack, reverse))
+		&sType, pdfBack, reverse))
 		return false;
 	// To make bump map work, we must compensate for the shading normal
 	// that can be different in the sub BSDF than in the mix. The values
@@ -430,36 +431,39 @@ bool MixBSDF::Sample_f(const TsPack *tspack, const Vector &wo, Vector *wi,
 	// Thus we divide by the cosine of the light ray and the mix shading
 	// normal and multiply by the cosine of the light ray and the sub BSDF
 	// shading normal.
+	// Part of the computation is done at the end for speed reasons
 	if (reverse)
-		*f_ *= weights[which] * AbsDot(*wi, bsdfs[which]->nn) /
-			AbsDot(*wi, nn);
+		*f_ *= weights[which] * AbsDot(*wi, bsdfs[which]->nn);
 	else
-		*f_ *= weights[which] * AbsDot(wo, bsdfs[which]->nn) /
-			AbsDot(wo, nn);
+		*f_ *= weights[which] * AbsDot(wo, bsdfs[which]->nn);
 	*pdf *= weights[which];
 	if (pdfBack)
 		*pdfBack *= weights[which];
+	if (sType & BSDF_SPECULAR)
+		flags = sType;
 	for (u_int i = 0; i < nBSDFs; ++i) {
 		if (i == which)
 			continue;
 		BSDF *bsdf = bsdfs[i];
+		if (bsdf->NumComponents(flags) == 0)
+			continue;
 		// Same trick than above for the shading normal
 		if (reverse)
-			f_->AddWeighted(weights[i] * AbsDot(*wi, bsdfs[i]->nn) /
-				AbsDot(*wi, nn),
+			f_->AddWeighted(weights[i] * AbsDot(*wi, bsdfs[i]->nn),
 				bsdf->f(tspack, *wi, wo, flags));
 		else
-			f_->AddWeighted(weights[i] * AbsDot(wo, bsdfs[i]->nn) /
-				AbsDot(wo, nn),
+			f_->AddWeighted(weights[i] * AbsDot(wo, bsdfs[i]->nn),
 				bsdf->f(tspack, wo, *wi, flags));
 		*pdf += weights[i] * bsdf->Pdf(tspack, wo, *wi, flags);
 		if (pdfBack)
 			*pdfBack += weights[i] * bsdf->Pdf(tspack, *wi, wo, flags);
 	}
-	*f_ /= totalWeight;
+	*f_ /= totalWeight * (reverse ? AbsDot(*wi, nn) : AbsDot(wo, nn));
 	*pdf /= totalWeight;
 	if (pdfBack)
 		*pdfBack /= totalWeight;
+	if (sampledType)
+		*sampledType = sType;
 	return true;
 }
 float MixBSDF::Pdf(const TsPack *tspack, const Vector &wo, const Vector &wi,
@@ -484,10 +488,10 @@ SWCSpectrum MixBSDF::f(const TsPack *tspack, const Vector &woW,
 		// Thus we divide by the cosine of woW and the mix shading
 		// normal and multiply by the cosine of woW and the sub BSDF
 		// shading normal.
-		ff.AddWeighted(weights[i] * AbsDot(woW, bsdfs[i]->nn) /
-			AbsDot(woW, nn), bsdfs[i]->f(tspack, woW, wiW, flags));
+		ff.AddWeighted(weights[i] * AbsDot(woW, bsdfs[i]->nn),
+			bsdfs[i]->f(tspack, woW, wiW, flags));
 	}
-	return ff / totalWeight;
+	return ff / (totalWeight * AbsDot(woW, nn));
 }
 SWCSpectrum MixBSDF::rho(const TsPack *tspack, BxDFType flags) const
 {

@@ -26,7 +26,7 @@
 #include <boost/thread.hpp>
 
 #include <QtGui/QMainWindow>
-#include <QtGui/QProgressDialog>
+#include <QtGui/QProgressBar>
 #include <QtGui/QGraphicsView>
 #include <QtGui/QGraphicsScene>
 #include <QtGui/QMessageBox>
@@ -50,6 +50,8 @@
 #include <QVector>
 #include <QSettings>
 #include <QTextCursor>
+#include <QtGui/QTabBar>
+
 
 #include "api.h"
 #include "renderview.hxx"
@@ -141,6 +143,9 @@ public:
 
 	void SetRenderThreads(int num);
 	void updateStatistics();
+	void showRenderresolution();
+	void showZoomfactor();
+	void showViewportsize();
 	void renderScenefile(const QString& sceneFilename, const QString& flmFilename);
 	void renderScenefile(const QString& filename);
 	void changeRenderState (LuxGuiRenderState state);
@@ -152,10 +157,8 @@ public:
 
 	void UpdateNetworkTree();
 
-	void ShowDialogBox(const std::string &msg, const std::string &caption = "LuxRender");
-	void ShowWarningDialogBox(const std::string &msg, const std::string &caption = "LuxRender");
-	void ShowErrorDialogBox(const std::string &msg, const std::string &caption = "LuxRender");
-
+	void ShowTabLogIcon( int index , const QIcon & icon);
+	
 	bool m_auto_tonemap;
 
 protected:
@@ -163,11 +166,26 @@ protected:
 	void setCurrentFile(const QString& filename);
 	void updateRecentFileActions();
 	void createActions();
-	
+
 private:
+	Ui::MainWindow *thorizontalLayout_4;
+	
+	QSpacerItem *resinfospacer;
+	QLabel *resLabel;
+	QLabel *resinfoLabel;
+	QLabel *zoomLabel;
+	QLabel *zoominfoLabel;
+	QLabel *viewportLabel;
+	QLabel *viewportinfoLabel;
+	
 	Ui::MainWindow *ui;
 
+	QLabel *activityLabel;
+	QLabel *statusLabel;
+	QLabel *statsLabel;
+	QLabel *activityMessage;
 	QLabel *statusMessage;
+	QProgressBar *statusProgress;
 	QLabel *statsMessage;
 	QSpacerItem *spacer;
 	
@@ -189,15 +207,12 @@ private:
 
 	int m_numThreads;
 	bool m_copyLog2Console;
-	bool m_showParseWarningDialog;
-	bool m_showParseErrorDialog;
-	bool m_showWarningDialog;
+
 	double m_samplesSec;
 	
 	LuxGuiRenderState m_guiRenderState;
 	
-	QProgressDialog *m_progDialog;
-	QTimer *m_renderTimer, *m_statsTimer, *m_loadTimer, *m_saveTimer, *m_netTimer;
+	QTimer *m_renderTimer, *m_statsTimer, *m_loadTimer, *m_saveTimer, *m_netTimer, *m_blinkTimer;
 	
 	boost::thread *m_engineThread, *m_updateThread, *m_flmloadThread, *m_flmsaveThread;
 
@@ -221,7 +236,12 @@ private:
 	void logEvent(LuxLogEvent *event);
 
 	bool canStopRendering ();
-
+    
+	bool blink;
+	int viewportw, viewporth;
+	float zoomfactor;
+	float factor;
+    
 	void UpdateLightGroupWidgetValues();
 	void ResetLightGroups(void);
 	void ResetLightGroupsFromFilm(bool useDefaults);
@@ -233,6 +253,7 @@ public slots:
 
 	void applyTonemapping (bool withlayercomputation = false);
 	void resetToneMapping ();
+	void indicateActivity (bool active = true);
 
 private slots:
 
@@ -247,7 +268,10 @@ private slots:
 	void stopRender ();
 	void copyLog ();
 	void clearLog ();
+	void tabChanged (int);
+	void viewportChanged ();
 	void fullScreen ();
+	void normalScreen ();
 	void aboutDialog ();
 	void openDocumentation ();
 	void openForums ();
@@ -257,6 +281,7 @@ private slots:
 	void loadTimeout ();
 	void saveTimeout ();
 	void netTimeout ();
+	void blinkTrigger (bool active = true);
 
 	void addThread ();
 	void removeThread ();
@@ -266,8 +291,6 @@ private slots:
 	void forceToneMapUpdate();
 
 	void autoEnabledChanged (int value);
-
-
 
 	void addServer();
 	void removeServer();

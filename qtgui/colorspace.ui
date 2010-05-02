@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>501</width>
-    <height>200</height>
+    <height>253</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -106,6 +106,9 @@
            </item>
            <item row="0" column="1" colspan="3">
             <widget class="QComboBox" name="comboBox_whitePointPreset">
+             <property name="currentIndex">
+              <number>0</number>
+             </property>
              <item>
               <property name="text">
                <string/>
@@ -113,57 +116,57 @@
              </item>
              <item>
               <property name="text">
-               <string>A</string>
+               <string>A - incandescent</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>B</string>
+               <string>B - sunlight</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>C</string>
+               <string>C - daylight</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>D50</string>
+               <string>D50 - daylight, 5003K</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>D55</string>
+               <string>D55 - daylight, 5503K</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>D65</string>
+               <string>D65 - daylight, 6504K</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>D75</string>
+               <string>D75 - daylight, 7504K</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>E</string>
+               <string>E - equal energy</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>F2</string>
+               <string>F2 - standard fluorescent</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>F7</string>
+               <string>F7 - broadband fluorescent</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>F11</string>
+               <string>F11 - narrow threeband fluorescent</string>
               </property>
              </item>
             </widget>
@@ -196,11 +199,14 @@
              <property name="toolTip">
               <string>White X</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -232,11 +238,14 @@
              <property name="toolTip">
               <string>White Y</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -289,11 +298,14 @@
              <property name="toolTip">
               <string>Red X</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -315,11 +327,14 @@
              <property name="toolTip">
               <string>Red Y</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -341,11 +356,14 @@
              <property name="toolTip">
               <string>Green X</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -367,11 +385,14 @@
              <property name="toolTip">
               <string>Green Y</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -393,11 +414,14 @@
              <property name="toolTip">
               <string>Blue X</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>
@@ -419,11 +443,14 @@
              <property name="toolTip">
               <string>Blue Y</string>
              </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
-              <double>0.100000000000000</double>
+              <double>0.010000000000000</double>
              </property>
             </widget>
            </item>

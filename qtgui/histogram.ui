@@ -31,6 +31,9 @@
        <property name="toolTip">
         <string>Pick a channel displayed on the histogram</string>
        </property>
+       <property name="currentIndex">
+        <number>1</number>
+       </property>
        <item>
         <property name="text">
          <string>R+G+B</string>
@@ -91,6 +94,12 @@
        <property name="minimumSize">
         <size>
          <width>0</width>
+         <height>150</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
          <height>150</height>
         </size>
        </property>

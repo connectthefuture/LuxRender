@@ -12,19 +12,11 @@ SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${LUX_CMAKE_DIR}")
 # Dade - uncomment to obtain verbose building output
 #SET(CMAKE_VERBOSE_MAKEFILE true)
 
-IF(APPLE)
-SET(APPLE_64 0)
-ENDIF(APPLE)
-
 #Setting Universal Binary Properties, only for Mac OS X
 IF(APPLE)
-	IF(APPLE_64)
-		SET(CMAKE_OSX_ARCHITECTURES x86_64)
-		SET(CMAKE_OSX_SYSROOT /Developer/SDKs/MacOSX10.5.sdk)
-	ELSE(APPLE_64)
-		SET(CMAKE_OSX_ARCHITECTURES i386)
-		SET(CMAKE_OSX_SYSROOT /Developer/SDKs/MacOSX10.5.sdk)
-	ENDIF(APPLE_64)
+	SET(CMAKE_OSX_DEPLOYMENT_TARGET 10.5)
+	SET(CMAKE_OSX_ARCHITECTURES i386;x86_64)
+	SET(CMAKE_OSX_SYSROOT /Developer/SDKs/MacOSX10.5.sdk)
 ENDIF(APPLE)
 
 
@@ -82,6 +74,31 @@ IF (NOT FLEX_EXECUTABLE)
 	MESSAGE(FATAL_ERROR "flex not found - aborting")
 ENDIF (NOT FLEX_EXECUTABLE)
 
+
+
+#############################################################################
+#############################################################################
+########################### BOOST LIBRARIES SETUP ###########################
+#############################################################################
+#############################################################################
+
+FIND_PACKAGE(Boost 1.41 REQUIRED COMPONENTS python)
+
+SET(Boost_python_FOUND ${Boost_FOUND})
+SET(Boost_python_LIBRARIES ${Boost_LIBRARIES})
+SET(Boost_FOUND)
+SET(Boost_LIBRARIES)
+
+FIND_PACKAGE(Boost 1.41 REQUIRED COMPONENTS thread program_options filesystem serialization iostreams regex system)
+
+IF(Boost_FOUND)
+	MESSAGE(STATUS "Boost library directory: " ${Boost_LIBRARY_DIRS})
+	MESSAGE(STATUS "Boost include directory: " ${Boost_INCLUDE_DIRS})
+ELSE(Boost_FOUND)
+	MESSAGE(FATAL_ERROR "Could not find Boost")
+ENDIF(Boost_FOUND)
+
+
 #############################################################################
 #############################################################################
 ######################### OPENEXR LIBRARIES SETUP ###########################
@@ -128,27 +145,6 @@ ELSE(PNG_FOUND)
 ENDIF(PNG_FOUND)
 #FIND_PACKAGE(PNG REQUIRED)
 
-#############################################################################
-#############################################################################
-########################### BOOST LIBRARIES SETUP ###########################
-#############################################################################
-#############################################################################
-
-FIND_PACKAGE(Boost 1.42.0 REQUIRED COMPONENTS python)
-
-SET(Boost_python_FOUND ${Boost_FOUND})
-SET(Boost_python_LIBRARIES ${Boost_LIBRARIES})
-SET(Boost_FOUND)
-SET(Boost_LIBRARIES)
-
-FIND_PACKAGE(Boost 1.42.0 REQUIRED COMPONENTS thread program_options filesystem serialization iostreams regex system)
-
-IF(Boost_FOUND)
-	MESSAGE(STATUS "Boost library directory: " ${Boost_LIBRARY_DIRS})
-	MESSAGE(STATUS "Boost include directory: " ${Boost_INCLUDE_DIRS})
-ELSE(Boost_FOUND)
-	MESSAGE(FATAL_ERROR "Could not find Boost")
-ENDIF(Boost_FOUND)
 
 
 #############################################################################
@@ -171,8 +167,16 @@ ENDIF(FREEIMAGE_FOUND)
 ############################ THREADING LIBRARIES ############################
 #############################################################################
 #############################################################################
-
-FIND_PACKAGE(Threads REQUIRED)
+IF(APPLE)
+    FIND_PATH(THREADS_INCLUDE_DIRS
+    pthread.h
+    PATHS
+    /usr/include/pthread
+    )
+	SET(THREADS_LIBRARIES pthread)
+ELSE(APPLE)
+	FIND_PACKAGE(Threads REQUIRED)
+ENDIF(APPLE)
 
 #############################################################################
 #############################################################################
@@ -242,6 +246,9 @@ ADD_DEFINITIONS(-DLUX_USE_CONFIG_H)
 #############################################################################
 # Dade - default compiler options
 ADD_DEFINITIONS(-O3 -msse2 -mfpmath=sse -ftree-vectorize -funroll-loops -Wall -fPIC -DLUX_USE_OPENGL -DHAVE_PTHREAD_H)
+# The QBVH accelerator needs to be compiled with much reduced optimizations
+# otherwise gcc produces incorrect code and ruins the render on 64bits machines
+SET_SOURCE_FILES_PROPERTIES(accelerators/qbvhaccel.cpp COMPILE_FLAGS "-O1")
 
 
 #############################################################################
@@ -330,7 +337,7 @@ SET_SOURCE_FILES_PROPERTIES(${CMAKE_BINARY_DIR}/core/luxparse.cpp GENERATED)
 
 #############################################################################
 #############################################################################
-#########################      APPLE CUSTOM PKG   ###########################
+##################  APPLE CUSTOM GUI_TYPE MACOSX_BUNDLE  ####################
 #############################################################################
 #############################################################################
 IF(APPLE)
@@ -358,6 +365,19 @@ IF(APPLE)
 	COMMAND cp luxrender.icns luxrender.app/Contents/Resources
 	COMMAND echo APPLnone > luxrender.app/Contents/PkgInfo
 	COMMAND cp luxrender luxrender.app/Contents/MacOS/luxrender)
+
+	SET(GUI_TYPE MACOSX_BUNDLE)
+	# SET(MACOSX_BUNDLE_LONG_VERSION_STRING "${OPENSCENEGRAPH_MAJOR_VERSION}.${OPENSCENEGRAPH_MINOR_VERSION}.${OPENSCENEGRAPH_PATCH_VERSION}")
+	# Short Version is the "marketing version". It is the version
+	# the user sees in an information panel.
+	SET(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
+	# Bundle version is the version the OS looks at.
+	SET(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
+	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.luxrender.luxrender" )
+	SET(MACOSX_BUNDLE_BUNDLE_NAME "luxrender" )
+	SET(MACOSX_BUNDLE_ICON_FILE "luxrender.icns")
+	# SET(MACOSX_BUNDLE_COPYRIGHT "")
+	# SET(MACOSX_BUNDLE_INFO_STRING "Info string, localized?")
 ENDIF(APPLE)
 
 
@@ -592,6 +612,7 @@ SET(lux_textures_src
 	textures/mix.cpp
 	textures/scale.cpp
 	textures/uv.cpp
+	textures/uvmask.cpp
 	textures/windy.cpp
 	textures/wrinkled.cpp
 	)
@@ -717,22 +738,7 @@ ADD_EXECUTABLE(luxconsole renderer/luxconsole.cpp)
 IF(APPLE)
 	TARGET_LINK_LIBRARIES(luxconsole -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} z ${Boost_LIBRARIES} )
 ELSE(APPLE)
-	TARGET_LINK_LIBRARIES(luxconsole -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${CMAKE_THREAD_LIBS_INIT} ${PNG_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
-ENDIF(APPLE)
-
-IF(APPLE)
-	SET(GUI_TYPE MACOSX_BUNDLE)
-	# SET(MACOSX_BUNDLE_LONG_VERSION_STRING "${OPENSCENEGRAPH_MAJOR_VERSION}.${OPENSCENEGRAPH_MINOR_VERSION}.${OPENSCENEGRAPH_PATCH_VERSION}")
-	# Short Version is the "marketing version". It is the version
-	# the user sees in an information panel.
-	SET(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
-	# Bundle version is the version the OS looks at.
-	SET(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
-	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.luxrender.luxrender" )
-	SET(MACOSX_BUNDLE_BUNDLE_NAME "luxrender" )
-	SET(MACOSX_BUNDLE_ICON_FILE "luxrender.icns")
-	# SET(MACOSX_BUNDLE_COPYRIGHT "")
-	# SET(MACOSX_BUNDLE_INFO_STRING "Info string, localized?")
+	TARGET_LINK_LIBRARIES(luxconsole -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} ${OPENEXR_LIBRARIES} ${PNG_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
 ENDIF(APPLE)
 
 #############################################################################
@@ -742,22 +748,7 @@ ADD_EXECUTABLE(luxmerger tools/luxmerger.cpp)
 IF(APPLE)
 	TARGET_LINK_LIBRARIES(luxmerger -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} z ${Boost_LIBRARIES} )
 ELSE(APPLE)
-	TARGET_LINK_LIBRARIES(luxmerger -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${CMAKE_THREAD_LIBS_INIT} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
-ENDIF(APPLE)
-
-IF(APPLE)
-	SET(GUI_TYPE MACOSX_BUNDLE)
-	# SET(MACOSX_BUNDLE_LONG_VERSION_STRING "${OPENSCENEGRAPH_MAJOR_VERSION}.${OPENSCENEGRAPH_MINOR_VERSION}.${OPENSCENEGRAPH_PATCH_VERSION}")
-	# Short Version is the "marketing version". It is the version
-	# the user sees in an information panel.
-	SET(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
-	# Bundle version is the version the OS looks at.
-	SET(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
-	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.luxrender.luxrender" )
-	SET(MACOSX_BUNDLE_BUNDLE_NAME "luxrender" )
-	SET(MACOSX_BUNDLE_ICON_FILE "luxrender.icns")
-	# SET(MACOSX_BUNDLE_COPYRIGHT "")
-	# SET(MACOSX_BUNDLE_INFO_STRING "Info string, localized?")
+	TARGET_LINK_LIBRARIES(luxmerger -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} ${OPENEXR_LIBRARIES} ${PNG_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
 ENDIF(APPLE)
 
 #############################################################################
@@ -767,22 +758,7 @@ ADD_EXECUTABLE(luxcomp tools/luxcomp.cpp)
 IF(APPLE)
 	TARGET_LINK_LIBRARIES(luxcomp -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} z ${Boost_LIBRARIES} )
 ELSE(APPLE)
-	TARGET_LINK_LIBRARIES(luxcomp -Wl,--whole-archive lux -Wl,--no-whole-archive ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
-ENDIF(APPLE)
-
-IF(APPLE)
-	SET(GUI_TYPE MACOSX_BUNDLE)
-	# SET(MACOSX_BUNDLE_LONG_VERSION_STRING "${OPENSCENEGRAPH_MAJOR_VERSION}.${OPENSCENEGRAPH_MINOR_VERSION}.${OPENSCENEGRAPH_PATCH_VERSION}")
-	# Short Version is the "marketing version". It is the version
-	# the user sees in an information panel.
-	SET(MACOSX_BUNDLE_SHORT_VERSION_STRING "${VERSION}")
-	# Bundle version is the version the OS looks at.
-	SET(MACOSX_BUNDLE_BUNDLE_VERSION "${VERSION}")
-	SET(MACOSX_BUNDLE_GUI_IDENTIFIER "org.luxrender.luxrender" )
-	SET(MACOSX_BUNDLE_BUNDLE_NAME "luxrender" )
-	SET(MACOSX_BUNDLE_ICON_FILE "luxrender.icns")
-	# SET(MACOSX_BUNDLE_COPYRIGHT "")
-	# SET(MACOSX_BUNDLE_INFO_STRING "Info string, localized?")
+	TARGET_LINK_LIBRARIES(luxcomp -Wl,--whole-archive lux -Wl,--no-whole-archive ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} ${OPENEXR_LIBRARIES} ${PNG_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
 ENDIF(APPLE)
 
 #############################################################################
@@ -809,7 +785,7 @@ IF(PYTHONLIBS_FOUND)
 		)
 	ELSE(APPLE)
 		ADD_LIBRARY(pylux SHARED python/binding.cpp)
-		TARGET_LINK_LIBRARIES(pylux -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${CMAKE_THREAD_LIBS_INIT} ${Boost_LIBRARIES}  ${SYS_LIBRARIES} ${PYTHON_LIBRARIES} ${Boost_python_LIBRARIES})
+		TARGET_LINK_LIBRARIES(pylux -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${CMAKE_THREAD_LIBS_INIT} ${FREEIMAGE_LIBRARIES} ${OPENEXR_LIBRARIES} ${PNG_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES} ${PYTHON_LIBRARIES} ${Boost_python_LIBRARIES})
 		ADD_CUSTOM_COMMAND(
 			TARGET pylux POST_BUILD
 			COMMAND mv libpylux.so pylux.so
@@ -858,7 +834,6 @@ IF(wxWidgets_FOUND)
 	IF(APPLE)
 		INCLUDE_DIRECTORIES (SYSTEM /Developer/Headers/FlatCarbon /usr/local/include)
 		FIND_LIBRARY(CARBON_LIBRARY Carbon)
-		FIND_LIBRARY(QUICKTIME_LIBRARY QuickTime )
 		FIND_LIBRARY(PYTHON_LIBRARY Python )
 		FIND_LIBRARY(OPENGL_LIBRARY OpenGL )
 		FIND_LIBRARY(AGL_LIBRARY AGL )
@@ -866,15 +841,14 @@ IF(wxWidgets_FOUND)
 
 		MESSAGE(STATUS ${CARBON_LIBRARY})
 		MARK_AS_ADVANCED (CARBON_LIBRARY)
-		MARK_AS_ADVANCED (QUICKTIME_LIBRARY)
 		MARK_AS_ADVANCED (PYTHON_LIBRARY)
 		MARK_AS_ADVANCED (OPENGL_LIBRARY)
 		MARK_AS_ADVANCED (AGL_LIBRARY)
 		MARK_AS_ADVANCED (APP_SERVICES_LIBRARY)
-		SET(EXTRA_LIBS ${CARBON_LIBRARY} ${QUICKTIME_LIBRARY} ${OPENGL_LIBRARY} ${AGL_LIBRARY} ${APP_SERVICES_LIBRARY})
+		SET(EXTRA_LIBS ${CARBON_LIBRARY} ${OPENGL_LIBRARY} ${AGL_LIBRARY} ${APP_SERVICES_LIBRARY})
 		TARGET_LINK_LIBRARIES(luxrenderwx -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${wxWidgets_LIBRARIES} ${FREEIMAGE_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} z ${BZ2_LIBRARIES} )
 	ELSE(APPLE)
-		TARGET_LINK_LIBRARIES(luxrenderwx -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${wxWidgets_LIBRARIES} ${OPENGL_LIBRARY} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
+		TARGET_LINK_LIBRARIES(luxrenderwx -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${wxWidgets_LIBRARIES} ${OPENGL_LIBRARY} ${FREEIMAGE_LIBRARIES} ${OPENEXR_LIBRARIES} ${PNG_LIBRARIES} ${Boost_LIBRARIES}  ${SYS_LIBRARIES})
 	ENDIF(APPLE)
 ELSE(wxWidgets_FOUND)
 	MESSAGE( STATUS "Warning : could not find wxWidgets - not building GUI")
@@ -908,7 +882,6 @@ IF(QT4_FOUND)
 	IF(APPLE)
 		INCLUDE_DIRECTORIES (SYSTEM /Developer/Headers/FlatCarbon /usr/local/include)
 		FIND_LIBRARY(CARBON_LIBRARY Carbon)
-		FIND_LIBRARY(QUICKTIME_LIBRARY QuickTime )
 		FIND_LIBRARY(PYTHON_LIBRARY Python )
 		FIND_LIBRARY(QT_LIBRARY QtCore QtGui QtOpenGL)
 		FIND_LIBRARY(OPENGL_LIBRARY OpenGL )
@@ -917,16 +890,15 @@ IF(QT4_FOUND)
 
 		MESSAGE(STATUS ${CARBON_LIBRARY})
 		MARK_AS_ADVANCED (CARBON_LIBRARY)
-		MARK_AS_ADVANCED (QUICKTIME_LIBRARY)
 		MARK_AS_ADVANCED (PYTHON_LIBRARY)
 		MARK_AS_ADVANCED (QT_LIBRARY)
 		MARK_AS_ADVANCED (OPENGL_LIBRARY)
 		MARK_AS_ADVANCED (AGL_LIBRARY)
 		MARK_AS_ADVANCED (APP_SERVICES_LIBRARY)
-		SET(EXTRA_LIBS ${CARBON_LIBRARY}  ${QUICKTIME_LIBRARY} ${QT_LIBRARY} ${OPENGL_LIBRARY} ${AGL_LIBRARY} ${APP_SERVICES_LIBRARY})
+		SET(EXTRA_LIBS ${CARBON_LIBRARY} ${QT_LIBRARY} ${OPENGL_LIBRARY} ${AGL_LIBRARY} ${APP_SERVICES_LIBRARY})
 		TARGET_LINK_LIBRARIES(luxrender -Wl,-undefined -Wl,dynamic_lookup -all_load lux -noall_load ${QT_LIBRARIES} ${FREEIMAGE_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} z ${BZ2_LIBRARIES} )
 	ELSE(APPLE)
-	TARGET_LINK_LIBRARIES(luxrender -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${QT_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} ${ZLIB_LIBRARIES} ${BZ2_LIBRARIES}  ${SYS_LIBRARIES}  ${OPENGL_LIBRARY})
+	TARGET_LINK_LIBRARIES(luxrender -Wl,--whole-archive lux -Wl,--no-whole-archive libfreeimage.a ${QT_LIBRARIES} ${FREEIMAGE_LIBRARIES} ${OPENEXR_LIBRARIES} ${PNG_LIBRARIES} ${Boost_LIBRARIES} ${EXTRA_LIBS} ${ZLIB_LIBRARIES} ${BZ2_LIBRARIES}  ${SYS_LIBRARIES}  ${OPENGL_LIBRARY})
 	ENDIF(APPLE)
 ELSE(QT4_FOUND)
 	MESSAGE( STATUS "Warning : could not find Qt - not building Qt GUI")
