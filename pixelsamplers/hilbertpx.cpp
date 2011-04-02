@@ -74,6 +74,22 @@ HilbertPixelSampler::HilbertPixelSampler(int xStart, int xEnd,
 	HilberCurve(n, xStart, yStart, 0, 1, 1, 0, xEnd, yEnd);
 	if (TotalPx != xSize * ySize)
 		LOG(LUX_DEBUG, LUX_BUG) << "Hilbert sampler generated wrong number of samples";
+	// Dade - sanity check
+	/*for(int y = yStart; y <= yEnd; y++) {
+		for(int x = xStart; x <= xEnd; x++) {
+			// Dade - look for the pixel
+			bool found = false;
+			for (u_int i = 0; i < TotalPx; i++) {
+				if ((Pxa[i].x == short(x)) && (Pxa[i].y == short(y))) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+				printf("Sanity check error: %d, %d\n", x, y);
+			}
+	}*/
 }
 
 u_int HilbertPixelSampler::GetTotalPixels()
