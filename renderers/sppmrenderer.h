@@ -20,8 +20,8 @@
  *   Lux Renderer website : http://www.luxrender.net                       *
  ***************************************************************************/
 
-#ifndef LUX_HYBRIDSPPM_H
-#define LUX_HYBRIDSPPM_H
+#ifndef LUX_SPPMRenderer_H
+#define LUX_SPPMRenderer_H
 
 #include <vector>
 #include <boost/thread.hpp>
@@ -31,28 +31,71 @@
 #include "fastmutex.h"
 #include "timer.h"
 #include "dynload.h"
-#include "hybridrenderer.h"
-#include "hybridsppm/hitpoints.h"
-
-#include "luxrays/luxrays.h"
-#include "luxrays/core/device.h"
-#include "luxrays/core/intersectiondevice.h"
+#include "sppm/hitpoints.h"
 
 namespace lux
 {
 
+class SPPMRenderer;
+class SPPMRHostDescription;
 class SPPMIntegrator;
 
 //------------------------------------------------------------------------------
-// HybridSPPM
+// SPPMRDeviceDescription
 //------------------------------------------------------------------------------
 
-#define SPPM_DEVICE_RENDER_BUFFER_COUNT 4
-
-class HybridSPPMRenderer : public HybridRenderer {
+class SPPMRDeviceDescription : protected RendererDeviceDescription {
 public:
-	HybridSPPMRenderer();
-	~HybridSPPMRenderer();
+	const string &GetName() const { return name; }
+
+	u_int GetAvailableUnitsCount() const {
+		return max(boost::thread::hardware_concurrency(), 1u);
+	}
+	u_int GetUsedUnitsCount() const;
+	void SetUsedUnitsCount(const u_int units);
+
+	friend class SPPMRenderer;
+	friend class SPPMRHostDescription;
+
+private:
+	SPPMRDeviceDescription(SPPMRHostDescription *h, const string &n) :
+		host(h), name(n) { }
+	~SPPMRDeviceDescription() { }
+
+	SPPMRHostDescription *host;
+	string name;
+};
+
+//------------------------------------------------------------------------------
+// SPPMRHostDescription
+//------------------------------------------------------------------------------
+
+class SPPMRHostDescription : protected RendererHostDescription {
+public:
+	const string &GetName() const { return name; }
+
+	vector<RendererDeviceDescription *> &GetDeviceDescs() { return devs; }
+
+	friend class SPPMRenderer;
+	friend class SPPMRDeviceDescription;
+
+private:
+	SPPMRHostDescription(SPPMRenderer *r, const string &n);
+	~SPPMRHostDescription();
+
+	SPPMRenderer *renderer;
+	string name;
+	vector<RendererDeviceDescription *> devs;
+};
+
+//------------------------------------------------------------------------------
+// SPPMRenderer
+//------------------------------------------------------------------------------
+
+class SPPMRenderer : public Renderer {
+public:
+	SPPMRenderer();
+	~SPPMRenderer();
 
 	RendererType GetType() const;
 
@@ -68,42 +111,50 @@ public:
 	void Resume();
 	void Terminate();
 
+	friend class SPPMRDeviceDescription;
+	friend class SPPMRHostDescription;
+
 	static Renderer *CreateRenderer(const ParamSet &params);
 
 	friend class HitPoints;
 
 private:
 	//--------------------------------------------------------------------------
-	// RenderThread
+	// Render threads
 	//--------------------------------------------------------------------------
 
-	class RenderThread : public boost::noncopyable {
+	class EyePassRenderThread : public boost::noncopyable {
 	public:
-		RenderThread(const u_int index, HybridSPPMRenderer *renderer, luxrays::IntersectionDevice *idev);
-		~RenderThread();
+		EyePassRenderThread(u_int index, SPPMRenderer *renderer);
+		~EyePassRenderThread();
 
-		void UpdateFilm();
-
-		static void RenderImpl(RenderThread *r);
+		static void RenderImpl(EyePassRenderThread *r);
 
 		u_int  n;
+		SPPMRenderer *renderer;
 		boost::thread *thread; // keep pointer to delete the thread object
-		HybridSPPMRenderer *renderer;
-		luxrays::IntersectionDevice * iDevice;
-		luxrays::RayBuffer *rayBufferHitPoints;
-		std::vector<luxrays::RayBuffer *> rayBuffersList;
-		std::vector<std::vector<PhotonPath> *> photonPathsList;
 
-		// Rendering statistics
-		fast_mutex statLock;
-		double samples, blackSamples;
+		RandomGenerator *threadRng;
+		Sample *threadSample;
 	};
 
-	void CreateRenderThread();
-	void PrivateCreateRenderThread();
-	void RemoveRenderThread();
-	void PrivateRemoveRenderThread();
-	size_t GetRenderThreadCount() const  { return requestedRenderThreadsCount; }
+	class PhotonPassRenderThread : public boost::noncopyable {
+	public:
+		PhotonPassRenderThread(u_int index, SPPMRenderer *renderer);
+		~PhotonPassRenderThread();
+
+		void TracePhotons();
+
+		static void RenderImpl(PhotonPassRenderThread *r);
+
+		u_int  n;
+		SPPMRenderer *renderer;
+		boost::thread *thread; // keep pointer to delete the thread object
+
+		RandomGenerator *threadRng;
+		Sample *threadSample;
+		Distribution1D *lightCDF;
+	};
 
 	double Statistics_GetNumberOfSamples();
 	double Statistics_SamplesPSec();
@@ -113,26 +164,35 @@ private:
 
 	//--------------------------------------------------------------------------
 
-	luxrays::Context *ctx;
+	mutable boost::mutex classWideMutex;
+	mutable boost::mutex renderThreadsMutex;
+	boost::barrier *allThreadBarrier;
+	boost::barrier *eyePassThreadBarrier;
+	boost::barrier *photonPassThreadBarrier;
+	boost::barrier *exitBarrier;
 
 	RendererState state;
-	// LuxRays virtual device used to feed all HardwareIntersectionDevice
-	luxrays::VirtualM2OHardwareIntersectionDevice *virtualIDevice;
-	vector<RenderThread *> renderThreads;
-	u_long requestedRenderThreadsCount;
+	vector<RendererHostDescription *> hosts;
+	vector<EyePassRenderThread *> eyePassRenderThreads;
+	vector<PhotonPassRenderThread *> photonPassRenderThreads;
+
 	Scene *scene;
 	SPPMIntegrator *sppmi;
-	u_long lastUsedSeed;
-	u_int bufferId;
-
 	HitPoints *hitPoints;
 
-	boost::barrier *barrier;
-	boost::barrier *barrierExit;
+	double photonHitEfficiency;
+
+	// Store number of photon traced by lightgroup
+	vector<unsigned long long> photonTracedTotal;
+	vector<u_int> photonTracedPass;
+
+	// Store number of photon traced this pass, regardless of lightgroup
+	u_int photonTracedPassNoLightGroup;
+
+	fast_mutex sampPosMutex;
+	u_int sampPos;
 
 	Timer s_Timer;
-	double lastSamples, lastTime;
-	double stat_Samples, stat_blackSamples;
 
 	// Put them last for better data alignment
 	// used to suspend render threads until the preprocessing phase is done
@@ -142,4 +202,4 @@ private:
 
 }//namespace lux
 
-#endif // LUX_HYBRIDSPPM_H
+#endif // LUX_SPPMRenderer_H

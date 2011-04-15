@@ -562,7 +562,6 @@ SET(lux_core_src
 SET(lux_accelerators_src
 	accelerators/bruteforce.cpp
 	accelerators/bvhaccel.cpp
-	accelerators/grid.cpp
 	accelerators/qbvhaccel.cpp
 	accelerators/tabreckdtree.cpp
 	accelerators/unsafekdtree.cpp
@@ -634,15 +633,32 @@ SET(lux_pixelsamplers_src
 	pixelsamplers/tilepx.cpp
 	pixelsamplers/vegas.cpp
 	)
+    renderers/sppmrenderer.cpp
+	renderers/sppm/lookupaccel.cpp
+	renderers/sppm/hashgrid.cpp
+	renderers/sppm/hitpoints.cpp
+	renderers/sppm/hybridhashgrid.cpp
+	renderers/sppm/stochastichashgrid.cpp
+	renderers/sppm/kdtree.cpp
+	renderers/sppm/grid.cpp
+	renderers/sppm/cuckoohashgrid.cpp
+	renderers/sppm/hybridmultihashgrid.cpp
+	renderers/sppm/stochasticmultihashgrid.cpp
 SET(lux_renderers_src
 	renderers/hybridrenderer.cpp
 	renderers/hybridsamplerrenderer.cpp
-	renderers/hybridsppmrenderer.cpp
-	renderers/hybridsppm/hashgrid.cpp
-	renderers/hybridsppm/hitpoints.cpp
-	renderers/hybridsppm/hybridhashgrid.cpp
-	renderers/hybridsppm/kdtree.cpp
 	renderers/samplerrenderer.cpp
+    renderers/sppmrenderer.cpp
+	renderers/sppm/lookupaccel.cpp
+	renderers/sppm/hashgrid.cpp
+	renderers/sppm/hitpoints.cpp
+	renderers/sppm/hybridhashgrid.cpp
+	renderers/sppm/stochastichashgrid.cpp
+	renderers/sppm/kdtree.cpp
+	renderers/sppm/grid.cpp
+	renderers/sppm/cuckoohashgrid.cpp
+	renderers/sppm/hybridmultihashgrid.cpp
+	renderers/sppm/stochasticmultihashgrid.cpp
 	)
 SET(lux_samplers_src
 	samplers/erpt.cpp
