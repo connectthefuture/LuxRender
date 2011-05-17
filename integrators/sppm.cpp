@@ -35,12 +35,10 @@ using namespace lux;
 
 SPPMIntegrator::SPPMIntegrator() {
 	bufferId = 0;
+	AddStringConstant(*this, "name", "Name of current surface integrator", "sppm");
 }
 
 SPPMIntegrator::~SPPMIntegrator() {
-}
-
-void SPPMIntegrator::RequestSamples(Sample *sample, const Scene &scene) {
 }
 
 void SPPMIntegrator::Preprocess(const RandomGenerator &rng, const Scene &scene) {
@@ -58,19 +56,46 @@ u_int SPPMIntegrator::Li(const Scene &scene, const Sample &sample) const {
 	return 0;
 }
 
-SurfaceIntegrator* SPPMIntegrator::CreateSurfaceIntegrator(const ParamSet &params) {
+SurfaceIntegrator *SPPMIntegrator::CreateSurfaceIntegrator(const ParamSet &params) {
 	SPPMIntegrator *sppmi =  new SPPMIntegrator();
 
 	// SPPM rendering parameters
 
-	sppmi->lookupAccelType = HYBRID_HASH_GRID;
-	sppmi->maxEyePathDepth = 16;
-	sppmi->photonAlpha = 0.7f;
-	sppmi->photonStartRadiusScale = 1.f;
-	sppmi->maxPhotonPathDepth = 8;
+	string acc = params.FindOneString("lookupaccel", "hybridhashgrid");
+	if (acc == "hashgrid") sppmi->lookupAccelType = HASH_GRID;
+	else if (acc == "kdtree") sppmi->lookupAccelType = KD_TREE;
+	else if (acc == "hybridhashgrid") sppmi->lookupAccelType = HYBRID_HASH_GRID;
+	else if (acc == "stochastichashgrid") sppmi->lookupAccelType = STOCHASTIC_HASH_GRID;
+	else if (acc == "grid") sppmi->lookupAccelType = GRID;
+	else if (acc == "cuckoohashgrid") sppmi->lookupAccelType = CUCKOO_HASH_GRID;
+	else if (acc == "hybridmultihashgrid") sppmi->lookupAccelType = HYBRID_MULTIHASH_GRID;
+	else if (acc == "stochasticmultihashgrid") sppmi->lookupAccelType = STOCHASTIC_MULTIHASH_GRID;
+	else {
+		LOG(LUX_WARNING,LUX_BADTOKEN) << "Lookup accelerator  '" << acc <<"' unknown. Using \"hybridhashgrid\".";
+		sppmi->lookupAccelType = HYBRID_HASH_GRID;
+	}
 
-	sppmi->stochasticInterval = 5000000;
-	sppmi->useDirectLightSampling = false;
+	string pxl = params.FindOneString("pixelsampler", "vegas");
+	if (pxl == "vegas") sppmi->PixelSampler = "vegas";
+	else if (pxl == "hilbert") sppmi->PixelSampler = "hilbert";
+	else if (pxl == "tile") sppmi->PixelSampler = "tile";
+	else if (pxl == "linear") sppmi->PixelSampler = "linear";
+	else {
+		LOG(LUX_WARNING,LUX_BADTOKEN) << "Pixelsampler '" << pxl <<"' unknown. Using \"vegas\".";
+		sppmi->PixelSampler = "vegas";
+	}
+
+	sppmi->maxEyePathDepth = params.FindOneInt("maxeyedepth", 16);
+	sppmi->photonAlpha = params.FindOneFloat("alpha", .7f);
+	sppmi->photonStartRadiusScale = params.FindOneFloat("startradius", 2.f);
+	sppmi->maxPhotonPathDepth = params.FindOneInt("maxphotondepth", 16);
+
+	sppmi->photonPerPass = params.FindOneInt("photonperpass", 1000000);
+
+	sppmi->includeEnvironment = params.FindOneBool("includeenvironment", true);
+
+	/*sppmi->dbg_enableradiusdraw = params.FindOneBool("dbg_enableradiusdraw", false);
+	sppmi->dbg_enablemsedraw = params.FindOneBool("dbg_enablemsedraw", false);*/
 
 	return sppmi;
 }
