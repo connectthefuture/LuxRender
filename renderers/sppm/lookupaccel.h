@@ -35,8 +35,7 @@ class HitPoint;
 class HitPoints;
 
 enum LookUpAccelType {
-	HASH_GRID, KD_TREE, HYBRID_HASH_GRID, STOCHASTIC_HASH_GRID, GRID,
-	CUCKOO_HASH_GRID, HYBRID_MULTIHASH_GRID, STOCHASTIC_MULTIHASH_GRID
+	HASH_GRID, KD_TREE, HYBRID_HASH_GRID
 };
 
 class HashCell;
@@ -51,6 +50,8 @@ public:
 
 	virtual void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
 		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group) = 0;
+	virtual bool HitSomething(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
+		const SpectrumWavelengths &sw) = 0;
 
 	friend class HashCell;
 
@@ -58,6 +59,9 @@ protected:
 	void AddFluxToHitPoint(HitPoint *hp, const u_int passIndex,
 		const BSDF &bsdf, const Point &hitPoint, const Vector &wi,
 		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
+	bool DoesAddFluxToHitPoint(HitPoint *hp, const u_int passIndex,
+		const BSDF &bsdf, const Point &hitPoint, const Vector &wi,
+		const SpectrumWavelengths &sw);
 };
 
 inline void SpectrumAtomicAdd(SWCSpectrum &s, SWCSpectrum &a) {
@@ -84,6 +88,8 @@ public:
 
 	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
 		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
+	bool HitSomething(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
+		const SpectrumWavelengths &sw);
 
 private:
 	u_int Hash(const int ix, const int iy, const int iz) {
@@ -100,109 +106,6 @@ private:
 };
 
 //------------------------------------------------------------------------------
-// Grid accelerator
-//------------------------------------------------------------------------------
-
-class GridLookUpAccel : public HitPointsLookUpAccel {
-public:
-	GridLookUpAccel(HitPoints *hps);
-
-	~GridLookUpAccel();
-
-	void RefreshMutex(const u_int passIndex);
-
-	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
-		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
-
-private:
-	u_int ReduceDims(const int ix, const int iy, const int iz) {
-		return ix + iy * gridSizeX + iz * gridSizeX * gridSizeY;
-	}
-
-	HitPoints *hitPoints;
-	u_int gridSize, gridSizeX, gridSizeY, gridSizeZ;
-	int maxGridIndexX, maxGridIndexY, maxGridIndexZ;
-	float invCellSize;
-	std::list<HitPoint *> **grid;
-};
-
-//------------------------------------------------------------------------------
-// StochasticHashGrid accelerator
-//------------------------------------------------------------------------------
-
-class StochasticHashGrid : public HitPointsLookUpAccel {
-public:
-	StochasticHashGrid(HitPoints *hps);
-
-	~StochasticHashGrid();
-
-	void RefreshMutex(const u_int passIndex);
-
-	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
-		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
-
-private:
-	struct GridCell {
-		HitPoint *hitPoint;
-		u_int count;
-	};
-
-	u_int Hash(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) % gridSize;
-	}
-
-	HitPoints *hitPoints;
-	u_int gridSize;
-	float invCellSize;
-	GridCell *grid;
-};
-
-//------------------------------------------------------------------------------
-// CuckooHashGrid accelerator
-//------------------------------------------------------------------------------
-
-class CuckooHashGrid : public HitPointsLookUpAccel {
-public:
-	CuckooHashGrid(HitPoints *hps);
-
-	~CuckooHashGrid();
-
-	void RefreshMutex(const u_int passIndex);
-
-	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
-		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
-
-private:
-	struct GridCell {
-		int ix, iy, iz;
-		HitPoint *hitPoint;
-	};
-
-	void Insert(const int ix, const int iy, const int iz, HitPoint *hitPoint);
-
-	u_int Hash1(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) % gridSize;
-	}
-	u_int Hash2(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 49979693) ^ (iy * 86028157) ^ (iz * 15485867)) % gridSize;
-	}
-	u_int Hash3(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 15485863) ^ (iy * 49979687) ^ (iz * 32452867)) % gridSize;
-	}
-	/*u_int Hash4(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 67867979) ^ (iy * 32452843) ^ (iz * 67867967)) % gridSize;
-	}*/
-
-	HitPoints *hitPoints;
-	u_int gridSize;
-	float invCellSize;
-
-	GridCell *grid1;
-	GridCell *grid2;
-	GridCell *grid3;
-};
-
-//------------------------------------------------------------------------------
 // KdTree accelerator
 //------------------------------------------------------------------------------
 
@@ -216,6 +119,8 @@ public:
 
 	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
 		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
+	bool HitSomething(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
+		const SpectrumWavelengths &sw);
 
 private:
 	struct KdNode {
@@ -314,6 +219,9 @@ public:
 	void AddFlux(HitPointsLookUpAccel *accel, const u_int passIndex,
 		const Point &hitPoint, const BSDF &bsdf, const Vector &wi,
 		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
+	bool HitSomething(HitPointsLookUpAccel *accel, const u_int passIndex,
+		const Point &hitPoint, const BSDF &bsdf, const Vector &wi,
+		const SpectrumWavelengths &sw);
 
 	u_int GetSize() const { return size; }
 
@@ -326,6 +234,9 @@ private:
 		void AddFlux(HitPointsLookUpAccel *accel,  const u_int passIndex,
 			const BSDF &bsdf, const Point &hitPoint, const Vector &wi,
 			const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
+		bool HitSomething(HitPointsLookUpAccel *accel,  const u_int passIndex,
+			const BSDF &bsdf, const Point &hitPoint, const Vector &wi,
+			const SpectrumWavelengths &sw);
 
 	private:
 		struct KdNode {
@@ -395,6 +306,8 @@ public:
 
 	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
 		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
+	bool HitSomething(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
+		const SpectrumWavelengths &sw);
 
 private:
 	u_int Hash(const int ix, const int iy, const int iz) {
@@ -407,78 +320,6 @@ private:
 	float invCellSize;
 	int maxHashIndexX, maxHashIndexY, maxHashIndexZ;
 	HashCell **grid;
-};
-
-//------------------------------------------------------------------------------
-// HybridMultiHashGrid accelerator
-//------------------------------------------------------------------------------
-
-class HybridMultiHashGrid : public HitPointsLookUpAccel {
-public:
-	HybridMultiHashGrid(HitPoints *hps);
-
-	~HybridMultiHashGrid();
-
-	void RefreshMutex(const u_int passIndex);
-	void RefreshParallel(const u_int passIndex, const u_int index, const u_int count);
-
-	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
-		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
-
-private:
-	u_int Hash1(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) % gridSize;
-	}
-	u_int Hash2(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 49979693) ^ (iy * 86028157) ^ (iz * 15485867)) % gridSize;
-	}
-	/*u_int Hash3(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 15485863) ^ (iy * 49979687) ^ (iz * 32452867)) % gridSize;
-	}*/
-
-	u_int kdtreeThreshold;
-	HitPoints *hitPoints;
-	u_int gridSize;
-	float invCellSize;
-	int maxHashIndexX, maxHashIndexY, maxHashIndexZ;
-	HashCell **grid;
-};
-
-//------------------------------------------------------------------------------
-// StochasticMultiHashGrid accelerator
-//------------------------------------------------------------------------------
-
-class StochasticMultiHashGrid : public HitPointsLookUpAccel {
-public:
-	StochasticMultiHashGrid(HitPoints *hps);
-
-	~StochasticMultiHashGrid();
-
-	void RefreshMutex(const u_int passIndex);
-
-	void AddFlux(const Point &hitPoint, const u_int passIndex, const BSDF &bsdf, const Vector &wi,
-		const SpectrumWavelengths &sw, const SWCSpectrum &photonFlux, const u_int light_group);
-
-private:
-	struct GridCell {
-		HitPoint *hitPoint;
-		u_int count;
-	};
-
-	u_int Hash1(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) % gridSize;
-	}
-	u_int Hash2(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 49979693) ^ (iy * 86028157) ^ (iz * 15485867)) % gridSize;
-	}
-	u_int Hash3(const int ix, const int iy, const int iz) {
-		return (u_int)((ix * 15485863) ^ (iy * 49979687) ^ (iz * 32452867)) % gridSize;
-	}
-
-	HitPoints *hitPoints;
-	u_int gridSize;
-	float invCellSize;
-	GridCell *grid;
 };
 
 }//namespace lux

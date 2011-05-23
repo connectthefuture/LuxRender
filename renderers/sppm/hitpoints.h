@@ -68,7 +68,6 @@ public:
 	Normal bsdfNG;
 };
 
-
 class HitPoint {
 public:
 	PermutedHalton *halton;
@@ -128,6 +127,12 @@ public:
 		lookUpAccel[passIndex]->AddFlux(hitPoint, passIndex, bsdf, wi, sw, photonFlux, light_group);
 	}
 
+	bool HitSomething(const Point &hitPoint, const BSDF &bsdf, const Vector &wi,
+		const SpectrumWavelengths &sw) {
+		const u_int passIndex = currentPhotonPass % 2;
+		return lookUpAccel[passIndex]->HitSomething(hitPoint, passIndex, bsdf, wi, sw);
+	}
+
 	void AccumulateFlux(const u_int index, const u_int count);
 	void SetHitPoints(RandomGenerator *rng,	const u_int index, const u_int count);
 
@@ -141,7 +146,7 @@ public:
 		lookUpAccel[passIndex]->RefreshParallel(passIndex, index, count);
 	}
 
-	void UpdateFilm(unsigned long long const total_photons);
+	void UpdateFilm(const float fluxScale, const unsigned long long totalPhotons);
 
 private:
 	bool TraceEyePath(HitPoint *hp, const Sample &sample, const float *u);

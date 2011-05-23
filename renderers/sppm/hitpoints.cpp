@@ -54,16 +54,14 @@ HitPoints::HitPoints(SPPMRenderer *engine, RandomGenerator *rng)  {
 	// Set the pixelsampler
 	if(renderer->sppmi->PixelSampler == "vegas"){
 		pixelSampler = new VegasPixelSampler(xstart, xend, ystart, yend);
-	}
-	if(renderer->sppmi->PixelSampler == "hilbert"){
+	} else if(renderer->sppmi->PixelSampler == "hilbert"){
 		pixelSampler = new HilbertPixelSampler(xstart, xend, ystart, yend);
-	}
-	if(renderer->sppmi->PixelSampler == "tile"){
+	} else if(renderer->sppmi->PixelSampler == "tile"){
 		pixelSampler = new TilePixelSampler(xstart, xend, ystart, yend);
-	}
-	if(renderer->sppmi->PixelSampler == "linear"){
+	} else 	if(renderer->sppmi->PixelSampler == "linear"){
 		pixelSampler = new LinearPixelSampler(xstart, xend, ystart, yend);
-	}
+	} else
+		assert (false);
 
 	hitPoints = new std::vector<HitPoint>(pixelSampler->GetTotalPixels());
 	LOG(LUX_DEBUG, LUX_NOERROR) << "Hit points count: " << hitPoints->size();
@@ -178,26 +176,6 @@ void HitPoints::Init() {
 			lookUpAccel[0] = new HybridHashGrid(this);
 			lookUpAccel[1] = new HybridHashGrid(this);
 			break;
-		case STOCHASTIC_HASH_GRID:
-			lookUpAccel[0] = new StochasticHashGrid(this);
-			lookUpAccel[1] = new StochasticHashGrid(this);
-			break;
-		case GRID:
-			lookUpAccel[0] = new GridLookUpAccel(this);
-			lookUpAccel[1] = new GridLookUpAccel(this);
-			break;
-		case CUCKOO_HASH_GRID:
-			lookUpAccel[0] = new CuckooHashGrid(this);
-			lookUpAccel[1] = new CuckooHashGrid(this);
-			break;
-		case HYBRID_MULTIHASH_GRID:
-			lookUpAccel[0] = new HybridMultiHashGrid(this);
-			lookUpAccel[1] = new HybridMultiHashGrid(this);
-			break;
-		case STOCHASTIC_MULTIHASH_GRID:
-			lookUpAccel[0] = new StochasticMultiHashGrid(this);
-			lookUpAccel[1] = new StochasticMultiHashGrid(this);
-			break;
 		default:
 			assert (false);
 	}
@@ -219,8 +197,7 @@ void HitPoints::AccumulateFlux(const u_int index, const u_int count) {
 		HitPoint *hp = &(*hitPoints)[i];
 		HitPointEyePass *hpep = &hp->eyePass[passIndex];
 
-		if(hpep->type == SURFACE)
-		{
+		if(hpep->type == SURFACE) {
 			// Compute g and do radius reduction
 			unsigned long long photonCount = 0;
 			unsigned long long accumPhotonCount = 0;
@@ -231,6 +208,7 @@ void HitPoints::AccumulateFlux(const u_int index, const u_int count) {
 				hp->lightGroupData[j].photonCount += hp->lightGroupData[j].accumPhotonCount;
 				hp->lightGroupData[j].accumPhotonCount = 0;
 			}
+
 			if (accumPhotonCount > 0) {
 				const unsigned long long pcount = photonCount + accumPhotonCount;
 				const double alpha = renderer->sppmi->photonAlpha;
@@ -240,15 +218,11 @@ void HitPoints::AccumulateFlux(const u_int index, const u_int count) {
 				hp->accumPhotonRadius2 *= g;
 
 				// Update light group flux
-				for (u_int j = 0; j < lightGroupsNumber; ++j) {
+				for (u_int j = 0; j < lightGroupsNumber; ++j)
 					hp->lightGroupData[j].reflectedFlux *= g;
-				}
 			}
-		}
-		else
-		{
+		} else
 			assert(hpep->type == CONSTANT_COLOR);
-		}
 	}
 }
 
@@ -516,7 +490,7 @@ void HitPoints::UpdatePointsInformation() {
 	maxHitPointRadius2[passIndex] = maxr2;
 }
 
-void HitPoints::UpdateFilm(unsigned long long total_photons) {
+void HitPoints::UpdateFilm(const float fluxScale, const unsigned long long totalPhotons) {
 	const u_int passIndex = currentPhotonPass % 2;
 
 	Scene &scene(*renderer->scene);
@@ -570,7 +544,7 @@ void HitPoints::UpdateFilm(unsigned long long total_photons) {
 
 			// Update radiance
 			for(u_int j = 0; j < lightGroupsNumber; ++j) {
-				const double k = 1.0 / (M_PI * hp->accumPhotonRadius2 * total_photons);
+				const double k = fluxScale / (M_PI * hp->accumPhotonRadius2 * totalPhotons);
 
 				const XYZColor newRadiance = hp->lightGroupData[j].accumRadiance / currentPhotonPass +
 						hp->lightGroupData[j].reflectedFlux * k;

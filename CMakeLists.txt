@@ -643,31 +643,23 @@ if(LUXRAYS_DISABLE_OPENCL)
 SET(lux_renderers_src
 	renderers/samplerrenderer.cpp
     renderers/sppmrenderer.cpp
+	renderers/sppm/photonsampler.cpp
 	renderers/sppm/lookupaccel.cpp
 	renderers/sppm/hashgrid.cpp
 	renderers/sppm/hitpoints.cpp
 	renderers/sppm/hybridhashgrid.cpp
-	renderers/sppm/stochastichashgrid.cpp
 	renderers/sppm/kdtree.cpp
-	renderers/sppm/grid.cpp
-	renderers/sppm/cuckoohashgrid.cpp
-	renderers/sppm/hybridmultihashgrid.cpp
-	renderers/sppm/stochasticmultihashgrid.cpp
 	)
 else(LUXRAYS_DISABLE_OPENCL)
 SET(lux_renderers_src
 	renderers/samplerrenderer.cpp
     renderers/sppmrenderer.cpp
+	renderers/sppm/photonsampler.cpp
 	renderers/sppm/lookupaccel.cpp
 	renderers/sppm/hashgrid.cpp
 	renderers/sppm/hitpoints.cpp
 	renderers/sppm/hybridhashgrid.cpp
-	renderers/sppm/stochastichashgrid.cpp
 	renderers/sppm/kdtree.cpp
-	renderers/sppm/grid.cpp
-	renderers/sppm/cuckoohashgrid.cpp
-	renderers/sppm/hybridmultihashgrid.cpp
-	renderers/sppm/stochasticmultihashgrid.cpp
 	renderers/hybridrenderer.cpp
 	renderers/hybridsamplerrenderer.cpp
 	)
