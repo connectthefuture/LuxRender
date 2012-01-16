@@ -51,15 +51,19 @@ public:
 	BxDFType flags;
 };
 
+/*
+Alignement warning:
+
+HitPoint class is 64 bytes wide, which is perfect for alignement in CPU cache.
+
+Please, do changes in this structure with this point in mind. Please see the
+static_assert at the end of the class.
+*/
+
 class HitPoint {
 public:
 	HitPointEyePass eyePass;
 
-	// photons statistics
-private:
-	unsigned long long photonCount;
-	u_int accumPhotonCount;
-public:
 	float accumPhotonRadius2;
 	float imageX, imageY;
 
@@ -85,57 +89,21 @@ public:
 
 	void IncPhoton()
 	{
-		osAtomicInc(&accumPhotonCount);
 	}
 	void InitStats()
 	{
-		photonCount = 0;
-		accumPhotonCount = 0;
 	}
 
 	u_int GetPhotonCount() const
 	{
-		return photonCount;
+		return 0;
 	}
-	void DoRadiusReduction(float const alpha)
+	void DoRadiusReduction(float const alpha, float const pass)
 	{
-		if (accumPhotonCount > 0) {
-			/*
-			TODO: startK disable because incorrect
-			u_int k = renderer->sppmi->photonStartK;
-			if(k > 0 && photonCount == 0)
-			{
-				// This heuristic is triggered by hitpoint on the first pass
-				// which gather photons.
-
-				// If the pass gather more than k photons, and with the
-				// assumption that photons are uniformly spread on the
-				// hitpoint, we reduce the search radius.
-
-				if(accumPhotonCount > k)
-				{
-					// We now suppose that we only gather k photons, and
-					// reduce the radius accordingly.
-					// Note: the flux is already normalised, so it does
-					// not depends of the radius, no need to change it.
-					accumPhotonRadius2 *= ((float) k) / ((float) accumPhotonCount);
-					accumPhotonCount = k;
-				}
-			}
-			*/
-			const unsigned long long pcount = photonCount + accumPhotonCount;
-
-			// Compute g and do radius reduction
-			const float g = alpha * pcount / (photonCount * alpha + accumPhotonCount);
-
-			// Radius reduction
-			accumPhotonRadius2 *= g;
-
-			photonCount = pcount;
-			accumPhotonCount = 0;
-		}
+		accumPhotonRadius2 *= (pass + alpha) / (pass + 1.0f);
 	}
 };
+BOOST_STATIC_ASSERT(sizeof(HitPoint) == 64);
 
 class SPPMRenderer;
 
@@ -326,7 +294,7 @@ private:
 
 	BBox hitPointBBox;
 	float maxHitPointRadius2;
-	std::vector<HitPoint> *hitPoints;
+	std::vector<HitPoint, AlignedAllocator<HitPoint> > *hitPoints;
 	HitPointsLookUpAccel *lookUpAccel;
 
 	u_int currentPass;

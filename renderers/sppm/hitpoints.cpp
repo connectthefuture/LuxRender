@@ -71,7 +71,7 @@ HitPoints::HitPoints(SPPMRenderer *engine, RandomGenerator *rng)  {
 	eyeSampler = new HaltonEyeSampler(xstart, xend, ystart, yend,
 		renderer->sppmi->PixelSampler);
 
-	hitPoints = new std::vector<HitPoint>(eyeSampler->GetTotalSamplePos());
+	hitPoints = new std::vector<HitPoint, AlignedAllocator<HitPoint> >(eyeSampler->GetTotalSamplePos());
 	LOG(LUX_DEBUG, LUX_NOERROR) << "Hit points count: " << hitPoints->size();
 
 	// Initialize hit points field
@@ -166,7 +166,7 @@ void HitPoints::AccumulateFlux(const u_int index, const u_int count) {
 		HitPoint *hp = &(*hitPoints)[i];
 
 		if(hp->IsSurface()) {
-			hp->DoRadiusReduction(renderer->sppmi->photonAlpha);
+			hp->DoRadiusReduction(renderer->sppmi->photonAlpha, GetPassCount());
 		} else
 			assert(!hp->IsSurface());
 	}
