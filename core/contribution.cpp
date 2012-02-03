@@ -155,7 +155,7 @@ void ContributionPool::Next(ContributionBuffer::Buffer* volatile *b, float *sc,
 	// CFull[tileIndex] is empty
 
 	// Since we're still holding the pool lock, 
-	// no other thread will fail the above test
+	// no other thread will perform the above test
 	// until CFree is filled with free buffers again.
 	// This prevents a thread from trying to splat
 	// prematurely.

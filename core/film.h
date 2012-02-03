@@ -564,8 +564,7 @@ public:
 	Film(u_int xres, u_int yres, Filter *filt, u_int filtRes, const float crop[4],
 		const string &filename1, bool premult, bool useZbuffer,
 		bool w_resume_FLM, bool restart_resume_FLM, bool write_FLM_direct,
-		int haltspp, int halttime,
-		int reject_warmup, bool debugmode, int outlierk, int tilecount);
+		int haltspp, int halttime, bool debugmode, int outlierk, int tilecount);
 
 	virtual ~Film();
 
@@ -606,6 +605,7 @@ public:
 	virtual const BufferConfig& GetBufferConfig(u_int index) const { return bufferConfigs[index]; }
 	virtual u_int GetNumBufferGroups() const { return bufferGroups.size(); }
 	virtual const BufferGroup& GetBufferGroup(u_int index) const { return bufferGroups[index]; }
+	virtual void ClearBuffers();
 
 	/**
 	 * Get the indexes that the current contribution spans.
@@ -699,11 +699,6 @@ protected: // Put it here for better data alignment
 
 	bool debug_mode;
 	bool premultiplyAlpha;
-
-	bool warmupComplete;
-	double reject_warmup_samples;
-	double warmupSamples;
-	float maxY;
 
 
 	bool writeResumeFlm, restartResumeFlm;

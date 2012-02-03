@@ -36,10 +36,6 @@ namespace lux
 // Eye path hit points
 //------------------------------------------------------------------------------
 
-enum HitPointType {
-	SURFACE, CONSTANT_COLOR
-};
-
 class HitPointEyePass {
 public:
 	// Eye path data
@@ -50,12 +46,9 @@ public:
 	float alpha;
 	float distance;
 
-	// Used for SURFACE type
-	Point position;
 	Vector wo;
 
 	BxDFType flags;
-	HitPointType type;
 };
 
 class HitPoint {
@@ -63,12 +56,85 @@ public:
 	HitPointEyePass eyePass;
 
 	// photons statistics
+private:
 	unsigned long long photonCount;
 	u_int accumPhotonCount;
+public:
 	float accumPhotonRadius2;
-
 	float imageX, imageY;
 
+	Point GetPosition() const
+	{
+		return eyePass.bsdf->dgShading.p;
+	}
+
+	void SetConstant()
+	{
+		eyePass.bsdf = NULL;
+	}
+	void SetSurface()
+	{
+		// the fact to set something else that NULL in bsdf field set the
+		// hitpoint as a surface
+	}
+
+	bool IsSurface() const
+	{
+		return eyePass.bsdf != NULL;
+	}
+
+	void IncPhoton()
+	{
+		osAtomicInc(&accumPhotonCount);
+	}
+	void InitStats()
+	{
+		photonCount = 0;
+		accumPhotonCount = 0;
+	}
+
+	u_int GetPhotonCount() const
+	{
+		return photonCount;
+	}
+	void DoRadiusReduction(float const alpha)
+	{
+		if (accumPhotonCount > 0) {
+			/*
+			TODO: startK disable because incorrect
+			u_int k = renderer->sppmi->photonStartK;
+			if(k > 0 && photonCount == 0)
+			{
+				// This heuristic is triggered by hitpoint on the first pass
+				// which gather photons.
+
+				// If the pass gather more than k photons, and with the
+				// assumption that photons are uniformly spread on the
+				// hitpoint, we reduce the search radius.
+
+				if(accumPhotonCount > k)
+				{
+					// We now suppose that we only gather k photons, and
+					// reduce the radius accordingly.
+					// Note: the flux is already normalised, so it does
+					// not depends of the radius, no need to change it.
+					accumPhotonRadius2 *= ((float) k) / ((float) accumPhotonCount);
+					accumPhotonCount = k;
+				}
+			}
+			*/
+			const unsigned long long pcount = photonCount + accumPhotonCount;
+
+			// Compute g and do radius reduction
+			const float g = alpha * pcount / (photonCount * alpha + accumPhotonCount);
+
+			// Radius reduction
+			accumPhotonRadius2 *= g;
+
+			photonCount = pcount;
+			accumPhotonCount = 0;
+		}
+	}
 };
 
 class SPPMRenderer;
@@ -219,7 +285,13 @@ public:
 	const u_int GetPassCount() const { return currentPass; }
 	void IncPass() {
 		++currentPass;
-		wavelengthSample = Halton(currentPass, wavelengthSampleScramble);
+		if (currentPass < wavelengthStratPasses) {
+			const u_int i = currentPass + 1; // use 1-based counting
+			const u_int Nsegments = 1 << Floor2UInt(Log2(i));
+			const u_int j = (2*Nsegments - 1) - i; // reverse order seems better
+			wavelengthSample = static_cast<float>(2*j + 1) / (2*Nsegments);
+		} else
+			wavelengthSample = Halton(currentPass - wavelengthStratPasses, wavelengthSampleScramble);
 		timeSample = Halton(currentPass, timeSampleScramble);
 	}
 
@@ -233,12 +305,8 @@ public:
 	void AccumulateFlux(const u_int index, const u_int count);
 	void SetHitPoints(Sample &sample, RandomGenerator *rng, const u_int index, const u_int count, MemoryArena& arena);
 
-	void RefreshAccelMutex() {
-		lookUpAccel->RefreshMutex();
-	}
-
-	void RefreshAccelParallel(const u_int index, const u_int count) {
-		lookUpAccel->RefreshParallel(index, count);
+	void RefreshAccel(const u_int index, const u_int count, boost::barrier &barrier) {
+		lookUpAccel->Refresh(index, count, barrier);
 	}
 
 private:
@@ -262,6 +330,7 @@ private:
 	// Only a single set of wavelengths is sampled for each pass
 	float wavelengthSample, timeSample;
 	u_int wavelengthSampleScramble, timeSampleScramble;
+	u_int wavelengthStratPasses;
 };
 
 }//namespace lux

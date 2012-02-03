@@ -36,6 +36,13 @@ HashGrid::~HashGrid() {
 	delete[] grid;
 }
 
+void HashGrid::Refresh( const u_int index, const u_int count, boost::barrier &barrier)
+{
+	if(index == 0)
+		RefreshMutex();
+	barrier.wait();
+}
+
 void HashGrid::RefreshMutex() {
 	const unsigned int hitPointsCount = hitPoints->GetSize();
 	const BBox &hpBBox = hitPoints->GetBBox();
@@ -102,13 +109,12 @@ void HashGrid::RefreshMutex() {
 	unsigned long long entryCount = 0;
 	for (unsigned int i = 0; i < hitPointsCount; ++i) {
 		HitPoint *hp = hitPoints->GetHitPoint(i);
-		HitPointEyePass *hpep = &hp->eyePass;
 
-		if (hpep->type == SURFACE) {
+		if (hp->IsSurface()) {
 			const float photonRadius = sqrtf(hp->accumPhotonRadius2);
 			const Vector rad(photonRadius, photonRadius, photonRadius);
-			const Vector bMin = ((hpep->position - rad) - hpBBox.pMin) * invCellSize;
-			const Vector bMax = ((hpep->position + rad) - hpBBox.pMin) * invCellSize;
+			const Vector bMin = ((hp->GetPosition() - rad) - hpBBox.pMin) * invCellSize;
+			const Vector bMax = ((hp->GetPosition() + rad) - hpBBox.pMin) * invCellSize;
 
 			for (int iz = abs(int(bMin.z)); iz <= abs(int(bMax.z)); ++iz) {
 				for (int iy = abs(int(bMin.y)); iy <= abs(int(bMax.y)); ++iy) {

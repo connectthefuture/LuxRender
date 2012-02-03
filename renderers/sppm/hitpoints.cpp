@@ -55,7 +55,12 @@ HitPoints::HitPoints(SPPMRenderer *engine, RandomGenerator *rng)  {
 
 	wavelengthSampleScramble = rng->uintValue();
 	timeSampleScramble = rng->uintValue();
-	wavelengthSample = Halton(0, wavelengthSampleScramble);
+	wavelengthStratPasses = RoundUpPow2(renderer->sppmi->wavelengthStratification);
+	if (wavelengthStratPasses > 0) {
+		LOG(LUX_DEBUG, LUX_NOERROR) << "Non-random wavelength stratification for " << wavelengthStratPasses << " passes";
+		wavelengthSample = 0.5f; // non-randomly stratified in IncPass for first N passes
+	} else
+		wavelengthSample = Halton(0, wavelengthSampleScramble);
 	timeSample = Halton(0, timeSampleScramble);
 
 	// Get the count of hit points required
@@ -73,8 +78,7 @@ HitPoints::HitPoints(SPPMRenderer *engine, RandomGenerator *rng)  {
 	for (u_int i = 0; i < (*hitPoints).size(); ++i) {
 		HitPoint *hp = &(*hitPoints)[i];
 
-		hp->photonCount = 0;
-		hp->accumPhotonCount = 0;
+		hp->InitStats();
 	}
 }
 
@@ -89,12 +93,11 @@ const double HitPoints::GetPhotonHitEfficency() {
 	u_int hitPointsUpdatedCount = 0;
 	for (u_int i = 0; i < GetSize(); ++i) {
 		HitPoint *hp = &(*hitPoints)[i];
-		HitPointEyePass *hpep = &hp->eyePass;
 
-		if (hpep->type == SURFACE) {
+		if (hp->IsSurface()) {
 			++surfaceHitPointsCount;
 
-			if (hp->accumPhotonCount > 0)
+			if (hp->GetPhotonCount() > 0)
 				++hitPointsUpdatedCount;
 		}
 	}
@@ -107,10 +110,9 @@ void HitPoints::Init() {
 	BBox hpBBox = BBox();
 	for (u_int i = 0; i < (*hitPoints).size(); ++i) {
 		HitPoint *hp = &(*hitPoints)[i];
-		HitPointEyePass *hpep = &hp->eyePass;
 
-		if (hpep->type == SURFACE)
-			hpBBox = Union(hpBBox, hpep->position);
+		if (hp->IsSurface())
+			hpBBox = Union(hpBBox, hp->GetPosition());
 	}
 
 	// Calculate initial radius
@@ -146,6 +148,9 @@ void HitPoints::Init() {
 		case HYBRID_HASH_GRID:
 			lookUpAccel = new HybridHashGrid(this);
 			break;
+		case PARALLEL_HASH_GRID:
+			lookUpAccel = new ParallelHashGrid(this, renderer->sppmi->parallelHashGridSpare);
+			break;
 		default:
 			assert (false);
 	}
@@ -162,47 +167,11 @@ void HitPoints::AccumulateFlux(const u_int index, const u_int count) {
 
 	for (u_int i = first; i < last; ++i) {
 		HitPoint *hp = &(*hitPoints)[i];
-		HitPointEyePass *hpep = &hp->eyePass;
 
-		if(hpep->type == SURFACE) {
-			if (hp->accumPhotonCount > 0) {
-				/*
-				TODO: startK disable because incorrect
-				u_int k = renderer->sppmi->photonStartK;
-				if(k > 0 && hp->photonCount == 0)
-				{
-					// This heuristic is triggered by hitpoint on the first pass
-					// which gather photons.
-
-					// If the pass gather more than k photons, and with the
-					// assumption that photons are uniformly spread on the
-					// hitpoint, we reduce the search radius.
-
-					if(hp->accumPhotonCount > k)
-					{
-						// We now suppose that we only gather k photons, and
-						// reduce the radius accordingly.
-						// Note: the flux is already normalised, so it does
-						// not depends of the radius, no need to change it.
-						hp->accumPhotonRadius2 *= ((float) k) / ((float) hp->accumPhotonCount);
-						hp->accumPhotonCount = k;
-					}
-				}
-				*/
-				const unsigned long long pcount = hp->photonCount + hp->accumPhotonCount;
-
-				// Compute g and do radius reduction
-				const double alpha = renderer->sppmi->photonAlpha;
-				const float g = alpha * pcount / (hp->photonCount * alpha + hp->accumPhotonCount);
-
-				// Radius reduction
-				hp->accumPhotonRadius2 *= g;
-
-				hp->photonCount = pcount;
-				hp->accumPhotonCount = 0;
-			}
+		if(hp->IsSurface()) {
+			hp->DoRadiusReduction(renderer->sppmi->photonAlpha);
 		} else
-			assert(hpep->type == CONSTANT_COLOR);
+			assert(!hp->IsSurface());
 	}
 }
 
@@ -233,7 +202,15 @@ void HitPoints::SetHitPoints(Sample &sample, RandomGenerator *rng, const u_int i
 		// Trace the eye path
 		TraceEyePath(hp, sample, arena);
 
-		eyeSampler->AddSample(sample);
+		// add contributions directly so we don't increase sample count
+		// as sample count is a proxy for photon count which is used for 
+		// weighting the photon buffer
+		// eye buffer weighting is done per-pixel, so should work out
+		for (u_int si = 0; si < sample.contributions.size(); ++si) {
+			sample.contribBuffer->Add(sample.contributions[si], 1.f);
+		}
+		sample.contributions.clear();
+
 		hp->imageX = sample.imageX;
 		hp->imageY = sample.imageY;
 
@@ -312,7 +289,7 @@ void HitPoints::TraceEyePath(HitPoint *hp, const Sample &sample, MemoryArena &hp
 			if (vertexIndex == 0)
 				hpep->alpha = 0.f;
 
-			hpep->type = CONSTANT_COLOR;
+			hp->SetConstant();
 			break;
 		}
 		scattered = bsdf->dgShading.scattered;
@@ -411,9 +388,8 @@ void HitPoints::TraceEyePath(HitPoint *hp, const Sample &sample, MemoryArena &hp
 
 		if(store)
 		{
-			hpep->type = SURFACE;
+			hp->SetSurface();
 			hpep->pathThroughput = pathThroughput * rayWeight / pdf_event;
-			hpep->position = p;
 			hpep->wo = wo;
 
 			hpep->flags = store_component;
@@ -432,7 +408,7 @@ void HitPoints::TraceEyePath(HitPoint *hp, const Sample &sample, MemoryArena &hp
 		if (pathLength == maxDepth || !bsdf->SampleF(sw, wo, &wi,
 			data[1], data[2], data[3], &f, &pdf, bounce_component, &flags,
 			NULL, true)) {
-			hpep->type = CONSTANT_COLOR;
+			hp->SetConstant();
 			break;
 		}
 
@@ -442,7 +418,7 @@ void HitPoints::TraceEyePath(HitPoint *hp, const Sample &sample, MemoryArena &hp
 
 		pathThroughput *= f / pdf_event;
 		if (pathThroughput.Black()) {
-			hpep->type = CONSTANT_COLOR;
+			hp->SetConstant();
 			break;
 		}
 
@@ -471,28 +447,28 @@ void HitPoints::UpdatePointsInformation() {
 
 	assert((*hitPoints).size() > 0);
 	HitPoint *hp = &(*hitPoints)[0];
-	HitPointEyePass *hpep = &hp->eyePass;
 
 	maxr2 = minr2 = meanr2 = hp->accumPhotonRadius2;
-	minp = maxp = meanp = hp->photonCount;
+	minp = maxp = meanp = hp->GetPhotonCount();
 
 	for (u_int i = 1; i < (*hitPoints).size(); ++i) {
 		hp = &(*hitPoints)[i];
-		hpep = &hp->eyePass;
 
-		if (hpep->type == SURFACE) {
-			if(hp->photonCount == 0)
+		if (hp->IsSurface()) {
+			u_int pc = hp->GetPhotonCount();
+			if(pc == 0)
 				++zeroHits;
 
-			bbox = Union(bbox, hpep->position);
+			bbox = Union(bbox, hp->GetPosition());
 
 			maxr2 = max<float>(maxr2, hp->accumPhotonRadius2);
 			minr2 = min<float>(minr2, hp->accumPhotonRadius2);
 			meanr2 += hp->accumPhotonRadius2;
 
-			maxp = max<float>(maxp, hp->photonCount);
-			minp = min<float>(minp, hp->photonCount);
-			meanp += hp->photonCount;
+
+			maxp = max<float>(maxp, pc);
+			minp = min<float>(minp, pc);
+			meanp += pc;
 
 			++surfaceHits;
 		}

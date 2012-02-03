@@ -52,6 +52,7 @@ public:
 	// double instead of float because photon counters declared as int 64bit
 	double photonAlpha;
 	float photonStartRadiusScale;
+	float parallelHashGridSpare;
 	u_int maxEyePathDepth;
 	u_int maxPhotonPathDepth;
 	u_int photonPerPass;
@@ -60,10 +61,13 @@ public:
 	u_int sampleOffset, bufferPhotonId, bufferEyeId;
 	bool includeEnvironment;
 
+	u_int wavelengthStratification;
+
 	// Few debugging options
 	//bool dbg_enableradiusdraw, dbg_enablemsedraw;
 	SurfaceIntegratorRenderingHints hints;
 	bool directLightSampling;
+	bool debug;
 };
 
 }//namespace lux

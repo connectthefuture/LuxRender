@@ -595,7 +595,7 @@ u_int Film::GetYResolution()
 Film::Film(u_int xres, u_int yres, Filter *filt, u_int filtRes, const float crop[4], 
 		   const string &filename1, bool premult, bool useZbuffer,
 		   bool w_resume_FLM, bool restart_resume_FLM, bool write_FLM_direct, int haltspp, int halttime,
-		   int reject_warmup, bool debugmode, int outlierk, int tilec) :
+		   bool debugmode, int outlierk, int tilec) :
 	Queryable("film"),
 	xResolution(xres), yResolution(yres),
 	EV(0.f), averageLuminance(0.f),  numberOfSamplesFromNetwork(0), numberOfLocalSamples(0),
@@ -604,7 +604,6 @@ Film::Film(u_int xres, u_int yres, Filter *filt, u_int filtRes, const float crop
 	colorSpace(0.63f, 0.34f, 0.31f, 0.595f, 0.155f, 0.07f, 0.314275f, 0.329411f), // default is SMPTE
 	ZBuffer(NULL), use_Zbuf(useZbuffer),
 	debug_mode(debugmode), premultiplyAlpha(premult),
-	warmupComplete(false), reject_warmup_samples(reject_warmup),
 	writeResumeFlm(w_resume_FLM), restartResumeFlm(restart_resume_FLM), writeFlmDirect(write_FLM_direct),
 	outlierRejection_k(outlierk), haltSamplesPerPixel(haltspp),
 	haltTime(halttime), histogram(NULL), enoughSamplesPerPixel(false)
@@ -618,13 +617,6 @@ Film::Film(u_int xres, u_int yres, Filter *filt, u_int filtRes, const float crop
 	int xRealWidth = Floor2Int(xPixelStart + .5f + xPixelCount + filter->xWidth) - Floor2Int(xPixelStart + .5f - filter->xWidth);
 	int yRealHeight = Floor2Int(yPixelStart + .5f + yPixelCount + filter->yWidth) - Floor2Int(yPixelStart + .5f - filter->yWidth);
 	samplePerPass = xRealWidth * yRealHeight;
-
-	// calculate reject warmup samples
-	reject_warmup_samples = (static_cast<double>(xRealWidth) * static_cast<double>(yRealHeight)) * reject_warmup;
-
-	maxY = debug_mode ? INFINITY : 0.f;
-	warmupSamples = 0;
-	warmupComplete = debug_mode;
 
 	boost::xtime_get(&creationTime, boost::TIME_UTC);
 
@@ -752,6 +744,21 @@ void Film::CreateBuffers()
 
 	// initialize the contribution pool
 	contribPool = new ContributionPool(this);
+}
+
+void Film::ClearBuffers() {
+	for (u_int i = 0; i < bufferGroups.size(); ++i) {
+
+		BufferGroup& bufferGroup = bufferGroups[i];
+
+		for (u_int j = 0; j < bufferConfigs.size(); ++j) {
+			Buffer* buffer = bufferGroup.getBuffer(j);
+
+			buffer->Clear();
+		}
+
+		bufferGroup.numberOfSamples = 0;
+	}
 }
 
 void Film::SetGroupName(u_int index, const string& name) 
@@ -905,19 +912,19 @@ void Film::RejectTileOutliers(const Contribution* const contribs, u_int num_cont
 		std::vector<OutlierAccel> &outlierRow = GetOutlierAccelRow(oY, tileIndex, tileStart, tileEnd);
 		OutlierAccel &outlierAccel = outlierRow[oX];
 
-		NearSetPointProcess<OutlierData::Point_t> proc(outlierRejection_k);
-		vector<ClosePoint<OutlierData::Point_t> > closest(outlierRejection_k);
-		proc.points = &closest[0];
+	NearSetPointProcess<OutlierData::Point_t> proc(outlierRejection_k);
+	vector<ClosePoint<OutlierData::Point_t> > closest(outlierRejection_k);
+	proc.points = &closest[0];
 
-		float maxDist = INFINITY;
+	float maxDist = INFINITY;
 
-		outlierAccel.Lookup(sd.p, proc, maxDist);
+	outlierAccel.Lookup(sd.p, proc, maxDist);
 
-		float kmeandist = 0.f;
-		for (u_int i = 0; i < proc.foundPoints; i++)
-			kmeandist += proc.points[i].distance;
+	float kmeandist = 0.f;
+	for (u_int i = 0; i < proc.foundPoints; i++)
+		kmeandist += proc.points[i].distance;
 	
-		//kmeandist /= proc.foundPoints;
+	//kmeandist /= proc.foundPoints;
 		
 		if (proc.foundPoints < 1 || kmeandist > proc.foundPoints) { // kmeandist > 1.f
 			// add outlier and return
@@ -1024,8 +1031,8 @@ void Film::AddTileSamples(const Contribution* const contribs, u_int num_contribs
 			continue;
 		}
 	
-		if (premultiplyAlpha)
-			xyz *= alpha;
+	if (premultiplyAlpha)
+		xyz *= alpha;
 
 		BufferGroup &currentGroup = bufferGroups[contrib.bufferGroup];
 		Buffer *buffer = currentGroup.getBuffer(contrib.buffer);

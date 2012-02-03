@@ -71,13 +71,12 @@ void HybridHashGrid::RefreshMutex() {
 	unsigned long long entryCount = 0;
 	for (unsigned int i = 0; i < hitPointsCount; ++i) {
 		HitPoint *hp = hitPoints->GetHitPoint(i);
-		HitPointEyePass *hpep = &hp->eyePass;
 
-		if (hpep->type == SURFACE) {
+		if (hp->IsSurface()) {
 			const float photonRadius = sqrtf(hp->accumPhotonRadius2);
 			const Vector rad(photonRadius, photonRadius, photonRadius);
-			const Vector bMin = ((hpep->position - rad) - hpBBox.pMin) * invCellSize;
-			const Vector bMax = ((hpep->position + rad) - hpBBox.pMin) * invCellSize;
+			const Vector bMin = ((hp->GetPosition() - rad) - hpBBox.pMin) * invCellSize;
+			const Vector bMax = ((hp->GetPosition() + rad) - hpBBox.pMin) * invCellSize;
 
 			const int ixMin = Clamp<int>(int(bMin.x), 0, maxHashIndexX);
 			const int ixMax = Clamp<int>(int(bMax.x), 0, maxHashIndexX);
@@ -129,7 +128,12 @@ void HybridHashGrid::RefreshMutex() {
 	}*/
 }
 
-void HybridHashGrid::RefreshParallel(const unsigned int index, const unsigned int count) {
+void HybridHashGrid::Refresh(const unsigned int index, const unsigned int count, boost::barrier &barrier) {
+	if(index == 0)
+		RefreshMutex();
+
+	barrier.wait();
+
 	if (gridSize == 0)
 		return;
 
@@ -161,6 +165,8 @@ void HybridHashGrid::RefreshParallel(const unsigned int index, const unsigned in
 			}
 		}
 	}*/
+
+	barrier.wait();
 }
 
 void HybridHashGrid::AddFlux(Sample& sample, const Point &hitPoint, const Vector &wi,

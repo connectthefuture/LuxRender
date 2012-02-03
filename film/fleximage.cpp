@@ -59,9 +59,9 @@ FlexImageFilm::FlexImageFilm(u_int xres, u_int yres, Filter *filt, u_int filtRes
 	float p_ReinhardBurn, float p_LinearSensitivity, float p_LinearExposure, float p_LinearFStop, float p_LinearGamma,
 	float p_ContrastYwa, const string &p_response, float p_Gamma,
 	const float cs_red[2], const float cs_green[2], const float cs_blue[2], const float whitepoint[2],
-	int reject_warmup, bool debugmode, int outlierk, int tilec) :
+	bool debugmode, int outlierk, int tilec) :
 	Film(xres, yres, filt, filtRes, crop, filename1, premult, cw_EXR_ZBuf || cw_PNG_ZBuf || cw_TGA_ZBuf, w_resume_FLM, 
-		restart_resume_FLM, write_FLM_direct, haltspp, halttime, reject_warmup, debugmode, outlierk, tilec), 
+		restart_resume_FLM, write_FLM_direct, haltspp, halttime, debugmode, outlierk, tilec), 
 	framebuffer(NULL), float_framebuffer(NULL), alpha_buffer(NULL), z_buffer(NULL),
 	writeInterval(wI), flmWriteInterval(fwI), displayInterval(dI)
 {
@@ -1084,13 +1084,16 @@ void FlexImageFilm::WriteImage(ImageType type)
 		}
 	}
 	// outside loop in order to write complete image
+	u_int pcount = 0;
 	for (u_int pix = 0; pix < nPix; ++pix) {
-		if (alphaWeight[pix] > 0.f)
+		if (alphaWeight[pix] > 0.f) {
 			alpha[pix] /= alphaWeight[pix];
-		Y += pixels[pix].c[1];
+			Y += pixels[pix].c[1];
+			pcount++;
+		}
 		alpha_buffer[pix] = alpha[pix];
 	}
-	Y /= nPix;
+	Y /= pcount;
 	averageLuminance = Y;
 	WriteImage2(type, pixels, alpha, "");
 	// The relation between EV and luminance in cd.m-2 is:
@@ -1507,8 +1510,6 @@ Film* FlexImageFilm::CreateFilm(const ParamSet &params, Filter *filter)
 	int displayInterval = params.FindOneInt("displayinterval", 12);
 
 	// Rejection mechanism
-	int reject_warmup = params.FindOneInt("reject_warmup", 64); // minimum samples/px before rejecting
-
 	int outlierrejection_k = params.FindOneInt("outlierrejection_k", 0); // k for k-nearest in outlier rejection, 0 = off
 
 	// Debugging mode (display erratic sample values and disable rejection mechanism)
@@ -1568,7 +1569,7 @@ Film* FlexImageFilm::CreateFilm(const ParamSet &params, Filter *filter)
 		w_resume_FLM, restart_resume_FLM, w_FLM_direct, haltspp, halttime,
 		s_TonemapKernel, s_ReinhardPreScale, s_ReinhardPostScale, s_ReinhardBurn, s_LinearSensitivity,
 		s_LinearExposure, s_LinearFStop, s_LinearGamma, s_ContrastYwa, response, s_Gamma,
-		red, green, blue, white, reject_warmup, debug_mode, outlierrejection_k, tilecount);
+		red, green, blue, white, debug_mode, outlierrejection_k, tilecount);
 }
 
 

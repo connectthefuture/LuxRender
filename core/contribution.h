@@ -33,6 +33,7 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/cstdint.hpp>
 
+using boost::uint16_t;
 
 namespace lux
 {
@@ -54,14 +55,13 @@ public:
 	Contribution(float x=0.f, float y=0.f, const XYZColor &c=0.f, float a=0.f, float zd=0.f,
 		float v=0.f, u_int b=0, u_int g=0) :
 		imageX(x), imageY(y), color(c), alpha(a), zdepth(zd), variance(v),
-		buffer(static_cast<boost::uint16_t>(b)), bufferGroup(static_cast<boost::uint16_t>(g)) {
-	}
+		buffer(static_cast<uint16_t>(b)), bufferGroup(static_cast<uint16_t>(g)) { }
 
 	float imageX, imageY;
 	XYZColor color;
 	float alpha, zdepth;
 	mutable float variance; // set to negative value if contribution is invalid/rejected
-	boost::uint16_t buffer, bufferGroup;
+	uint16_t buffer, bufferGroup;
 };
 
 class ContributionBuffer {
@@ -144,7 +144,7 @@ public:
 	void Flush();
 	void Delete();
 
-	// Have to implement this method here in order
+	// I have to implement this method here in order
 	// to acquire splattingMutex lock
 	void CheckFilmWriteOuputInterval();
 
