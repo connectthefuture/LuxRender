@@ -1354,6 +1354,12 @@ void Context::TransmitFilm(std::basic_ostream<char> &stream, bool useCompression
 void Context::UpdateFilmFromNetwork() {
 	renderFarm->updateFilm(luxCurrentScene);
 }
+
 void Context::UpdateLogFromNetwork() {
 	renderFarm->updateLog();
+}
+
+void Context::SetUserSamplingMap(const float *map)
+{
+	luxCurrentScene->camera->film->SetUserSamplingMap(map);
 }
