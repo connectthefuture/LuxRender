@@ -45,6 +45,8 @@
 #include <boost/thread.hpp>
 #include <boost/math/special_functions/bessel.hpp>
 
+#include <tbb/tbb.h>
+
 #define cimg_display_type  0
 
 #ifdef LUX_USE_CONFIG_H
@@ -207,13 +209,13 @@ struct BloomFilter
 		xyzpixels(xyzpixels_)
 	{}
 
-	void operator()()
+	void operator()(tbb::blocked_range2d<u_int> const &r) const
 	{
 		// Apply bloom filter to image pixels
 		//			vector<Color> bloomImage(nPix);
 	//			ProgressReporter prog(yResolution, "Bloom filter"); //NOBOOK //intermediate crashfix until imagepipelinerefactor is done - Jens
-		for (u_int y = 0; y < yResolution; ++y) {
-			for (u_int x = 0; x < xResolution; ++x) {
+		for (u_int y = r.rows().begin(); y < r.rows().end(); ++y) {
+			for (u_int x = r.cols().begin(); x < r.cols().end(); ++x) {
 				// Compute bloom for pixel _(x,y)_
 				// Compute extent of pixels contributing bloom
 				const u_int x0 = max(x, bloomWidth) - bloomWidth;
@@ -401,11 +403,11 @@ struct VignettingFilter
 		invyRes(1.f / yResolution_)
 	{}
 
-	void operator()()
+	void operator()(tbb::blocked_range2d<u_int> const &r) const
 	{
 		//for each pixel in the source image
-		for(u_int y = 0; y < yResolution; ++y) {
-			for(u_int x = 0; x < xResolution; ++x) {
+		for (u_int y = r.rows().begin(); y < r.rows().end(); ++y) {
+			for (u_int x = r.cols().begin(); x < r.cols().end(); ++x) {
 				const float nPx = x * invxRes;
 				const float nPy = y * invyRes;
 				const float xOffset = nPx - 0.5f;
@@ -620,7 +622,8 @@ void ApplyImagingPipeline(vector<XYZColor> &xyzpixels, u_int xResolution, u_int 
 		}
 
 		// VignettingFilter
-		VignettingFilter(xResolution, yResolution, aberrationEnabled, aberrationAmount, outp, rgbpixels, VignettingEnabled, VignetScale)();
+		VignettingFilter vf(xResolution, yResolution, aberrationEnabled, aberrationAmount, outp, rgbpixels, VignettingEnabled, VignetScale);
+		tbb::parallel_for(tbb::blocked_range2d<u_int>(0, yResolution, 0, xResolution), vf);
 
 		if (aberrationEnabled) {
 			for(u_int i = 0; i < nPix; ++i)
