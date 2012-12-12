@@ -24,24 +24,25 @@
 #define LUX_SAMPLERSTATISTICS_H
 
 #include "rendererstatistics.h"
-#include "renderers/samplerrenderer.h"
+#include "fastmutex.h"
 
 #include <algorithm>
 
 namespace lux
 {
 
+template<typename Renderer>
 class SRStatistics : public RendererStatistics {
 public:
-	SRStatistics(SamplerRenderer* renderer);
+	SRStatistics(Renderer* renderer);
 	~SRStatistics();
 
 	class FormattedLong : public RendererStatistics::FormattedLong {
 	public:
-		FormattedLong(SRStatistics* rs);
+		FormattedLong(SRStatistics<Renderer>* rs);
 
 	private:
-		SRStatistics* rs;
+		SRStatistics<Renderer>* rs;
 
 		virtual std::string getRecommendedStringTemplate();
 		virtual std::string getProgress() { return getTotalAverageSamplesPerPixel(); }
@@ -67,16 +68,16 @@ public:
 		std::string getTotalAverageSamplesPerSecond();
 		std::string getTotalAverageSamplesPerSecondWindow();
 
-		friend class SRStatistics;
-		friend class SRStatistics::FormattedShort;
+		friend class SRStatistics<Renderer>;
+		friend class SRStatistics<Renderer>::FormattedShort;
 	};
 
 	class FormattedShort : public RendererStatistics::FormattedShort {
 	public:
-		FormattedShort(SRStatistics* rs);
+		FormattedShort(SRStatistics<Renderer>* rs);
 
 	private:
-		SRStatistics* rs;
+		SRStatistics<Renderer>* rs;
 
 		virtual std::string getRecommendedStringTemplate();
 		virtual std::string getProgress();
@@ -86,7 +87,7 @@ public:
 	};
 
 private:
-	SamplerRenderer* renderer;
+	Renderer* renderer;
 
 	double windowSampleCount;
 	double exponentialMovingAverage;
@@ -100,7 +101,8 @@ private:
 
 	virtual double getRemainingTime();
 	virtual double getPercentComplete() { return std::max(getPercentHaltTimeComplete(), getPercentHaltSppComplete()); }
-	virtual u_int getThreadCount() { return renderer->renderThreads.size(); }
+
+	virtual u_int getThreadCount();
 
 	double getHaltSpp();
 	double getRemainingSamplesPerPixel() { return std::max(0.0, getHaltSpp() - getTotalAverageSamplesPerPixel()); }
