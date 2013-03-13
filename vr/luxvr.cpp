@@ -157,12 +157,12 @@ int main(int argc, char **argv) {
 
 		boost::filesystem::path slgPath = exePath / "slg4";
 		if (!boost::filesystem::exists(slgPath))
-			slgPath = exePath / "slg4";
-		if (!boost::filesystem::exists(slgPath))
-			slgPath = exePath / "slg.exe";
+			slgPath = exePath / "slg4.exe";
 		if (!boost::filesystem::exists(slgPath))
 			slgPath = exePath / "slg";
-		// On Apple slg inside bundle has nasty sideeffects, so we look in default release location
+		if (!boost::filesystem::exists(slgPath))
+			slgPath = exePath / "slg.exe";
+		// On Apple slg inside bundle has nasty sideefects, so we use default release location
 		if (!boost::filesystem::exists(slgPath))
 			slgPath = exePath / "../../../SmallluxGPU/slg4";
 		if (!boost::filesystem::exists(slgPath))
