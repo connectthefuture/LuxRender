@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 1998-2009 by authors (see AUTHORS.txt )                 *
+ *   Copyright (C) 1998-2013 by authors (see AUTHORS.txt)                  *
  *                                                                         *
  *   This file is part of LuxRender.                                       *
  *                                                                         *
@@ -136,17 +136,21 @@ class BidirVertex;
 class BidirIntegrator : public SurfaceIntegrator {
 public:
 	BidirIntegrator(u_int ed, u_int ld, float et, float lt,
-		LightsSamplingStrategy *lds, LightsSamplingStrategy *lps,
+		LightsSamplingStrategy *lds, u_int src,
+		LightsSamplingStrategy *lps, u_int lrc,
 		bool mis, bool d) : SurfaceIntegrator(),
 		maxEyeDepth(ed), maxLightDepth(ld),
 		eyeThreshold(et), lightThreshold(lt),
 		lightDirectStrategy(lds), lightPathStrategy(lps),
+		shadowRayCount(src), lightRayCount(lrc),
 		hybridUseMIS(mis), debug(d) {
 		directSamplingCount = 0;
 		pathSamplingCount = 0;
 		eyeBufferId = 0;
 		lightBufferId = 0;
 		AddStringConstant(*this, "name", "Name of current surface integrator", "bidirectional");
+		AddIntAttribute(*this, "maxEyeDepth", "Eye path max. depth", &BidirIntegrator::GetMaxEyeDepth);
+		AddIntAttribute(*this, "maxLightDepth", "Light path max. depth", &BidirIntegrator::GetMaxLightDepth);
 	}
 	virtual ~BidirIntegrator() { }
 	// BidirIntegrator Public Methods
@@ -186,6 +190,10 @@ public:
 	vector<u_int> sampleLightOffsets;
 
 private:
+	// Used by Queryable interface
+	u_int GetMaxEyeDepth() { return maxEyeDepth; }
+	u_int GetMaxLightDepth() { return maxLightDepth; }
+
 	/**
 	 * Compute the weight of the given path for MIS.
 	 * @param eye The eye path
@@ -253,9 +261,10 @@ private:
 		float directWeight, SWCSpectrum *Ld, float *weight) const;
 	// BidirIntegrator Data
 	LightsSamplingStrategy *lightDirectStrategy, *lightPathStrategy;
+	u_int shadowRayCount, lightRayCount;
 	u_int directSamplingCount, pathSamplingCount;
-	u_int lightNumOffset;
-	u_int lightPosOffset, lightDirOffset, sampleDirectOffset;
+	u_int lightNumOffset, lightPortalOffset;
+	u_int lightPosOffset, sampleDirectOffset;
 	bool hybridUseMIS, debug;
 };
 

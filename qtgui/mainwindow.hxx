@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 1998-2012 by authors (see AUTHORS.txt )                 *
+ *   Copyright (C) 1998-2013 by authors (see AUTHORS.txt)                  *
  *                                                                         *
  *   This file is part of LuxRender.                                       *
  *                                                                         *
@@ -484,6 +484,7 @@ private slots:
 
 	void autoEnabledChanged (int value);
 	void overrideDisplayIntervalChanged(int value);
+	void overrideWriteIntervalChanged(int value);
 
 	void addServer();
 	void removeServer();

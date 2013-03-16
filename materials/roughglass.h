@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 1998-2009 by authors (see AUTHORS.txt )                 *
+ *   Copyright (C) 1998-2013 by authors (see AUTHORS.txt)                  *
  *                                                                         *
  *   This file is part of LuxRender.                                       *
  *                                                                         *
@@ -38,13 +38,20 @@ public:
 		boost::shared_ptr<Texture<float> > &i,
 		boost::shared_ptr<Texture<float> > &cbf,
 		bool disp,
-		const ParamSet &mp) : Material(mp), Kr(r), Kt(t), index(i),
+		const ParamSet &mp) : Material("RoughGlass-" + boost::lexical_cast<string>(this), mp),
+		Kr(r), Kt(t), index(i),
 		cauchyb(cbf), uroughness(urough), vroughness(vrough),
 		dispersion(disp) { }
 	virtual ~RoughGlass() { }
 	virtual BSDF *GetBSDF(MemoryArena &arena, const SpectrumWavelengths &sw,
 		const Intersection &isect,
 		const DifferentialGeometry &dgShading) const;
+
+	Texture<SWCSpectrum> *GetKrTexture() { return Kr.get(); }
+	Texture<SWCSpectrum> *GetKtTexture() { return Kt.get(); }
+	Texture<float> *GetIndexTexture() { return index.get(); }
+	Texture<float> *GetNuTexture() { return uroughness.get(); }
+	Texture<float> *GetNvTexture() { return vroughness.get(); }
 
 	static Material * CreateMaterial(const Transform &xform,
 		const ParamSet &mp);
